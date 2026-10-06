@@ -1,0 +1,101 @@
+policy,seed,merchant,win,day,score,cause,errors,steps
+random,1,Persian Trader,False,12,1704,exhaustion,0,36
+random,2,Armenian Trader,False,12,1493,exhaustion,0,75
+random,3,Pashtun Horse Dealer,False,24,1685,exhaustion,0,97
+random,4,Uzbek Trader,False,15,2190,fever,0,69
+random,5,Yarkandi Trader,False,23,1420,fever,0,107
+random,6,Persian Trader,False,15,1665,hunger,0,46
+random,7,Armenian Trader,False,15,1755,hunger,0,46
+random,8,Pashtun Horse Dealer,True,20,2441,,0,80
+random,9,Uzbek Trader,False,19,1740,hunger,0,70
+random,10,Yarkandi Trader,True,25,1517,,0,100
+random,11,Persian Trader,True,23,2924,,0,79
+random,12,Armenian Trader,True,23,2169,,0,90
+random,13,Pashtun Horse Dealer,False,24,1763,fever,0,120
+random,14,Uzbek Trader,True,28,1639,,0,151
+random,15,Yarkandi Trader,True,20,2363,,0,95
+random,16,Persian Trader,True,19,2367,,0,103
+random,17,Armenian Trader,True,22,3030,,0,85
+random,18,Pashtun Horse Dealer,True,32,2908,,0,116
+random,19,Uzbek Trader,False,12,2156,fever,0,37
+random,20,Yarkandi Trader,False,17,1320,hunger,0,68
+random,21,Persian Trader,False,22,1335,fever,0,90
+random,22,Armenian Trader,True,27,2454,,0,124
+random,23,Pashtun Horse Dealer,False,13,1306,"dysentery, the bloody flux",0,67
+random,24,Uzbek Trader,False,22,2196,"dysentery, the bloody flux",0,90
+random,25,Yarkandi Trader,True,24,1541,,0,100
+random,26,Persian Trader,False,18,1861,fever,0,81
+random,27,Armenian Trader,False,19,1640,hunger,0,85
+random,28,Pashtun Horse Dealer,False,21,1875,"dysentery, the bloody flux",0,112
+random,29,Uzbek Trader,False,23,953,heatstroke,0,138
+random,30,Yarkandi Trader,False,12,1794,wounds from a clash in the pass,0,63
+random,31,Persian Trader,True,32,2582,,0,143
+random,32,Armenian Trader,False,20,1569,"dysentery, the bloody flux",0,110
+random,33,Pashtun Horse Dealer,False,21,2061,exhaustion,0,108
+random,34,Uzbek Trader,False,26,1259,fever,0,118
+random,35,Yarkandi Trader,False,20,1538,exhaustion,0,89
+random,36,Persian Trader,True,28,1482,,0,124
+random,37,Armenian Trader,False,17,1395,exhaustion,0,86
+random,38,Pashtun Horse Dealer,True,31,1994,,0,157
+random,39,Uzbek Trader,False,21,1536,fever,0,73
+random,40,Yarkandi Trader,False,18,1820,hunger,0,68
+random,41,Persian Trader,False,19,1538,exhaustion,0,90
+random,42,Armenian Trader,True,17,2652,,0,68
+random,43,Pashtun Horse Dealer,False,18,1460,hunger,0,103
+random,44,Uzbek Trader,False,15,1490,fever,0,54
+random,45,Yarkandi Trader,False,21,1788,"dysentery, the bloody flux",0,94
+random,46,Persian Trader,False,23,1452,"dysentery, the bloody flux",0,113
+random,47,Armenian Trader,True,29,1914,,0,114
+random,48,Pashtun Horse Dealer,False,22,1684,fever,0,131
+random,49,Uzbek Trader,False,25,2216,hunger,0,78
+random,50,Yarkandi Trader,True,29,1919,,0,95
+random,51,Persian Trader,True,22,1780,,0,75
+random,52,Armenian Trader,True,26,2014,,0,106
+random,53,Pashtun Horse Dealer,False,10,1575,"dysentery, the bloody flux",0,58
+random,54,Uzbek Trader,False,16,1836,hunger,0,62
+random,55,Yarkandi Trader,False,17,1875,exhaustion,0,76
+random,56,Persian Trader,False,18,2042,hunger,0,62
+random,57,Armenian Trader,True,25,2091,,0,100
+random,58,Pashtun Horse Dealer,False,25,1808,fever,0,121
+random,59,Uzbek Trader,False,22,1866,exhaustion,0,83
+random,60,Yarkandi Trader,False,13,1788,exhaustion,0,53
+random,61,Persian Trader,False,33,1698,fever,0,145
+random,62,Armenian Trader,False,26,1892,fever,0,111
+random,63,Pashtun Horse Dealer,True,34,2710,,0,121
+random,64,Uzbek Trader,False,22,2132,"dysentery, the bloody flux",0,93
+random,65,Yarkandi Trader,True,23,2826,,0,113
+random,66,Persian Trader,False,28,2094,hunger,0,98
+random,67,Armenian Trader,True,22,2477,,0,116
+random,68,Pashtun Horse Dealer,False,16,1038,"dysentery, the bloody flux",0,91
+random,69,Uzbek Trader,False,13,1628,fever,0,59
+random,70,Yarkandi Trader,False,15,1593,fever,0,49
+random,71,Persian Trader,True,23,2704,,0,90
+random,72,Armenian Trader,False,14,1913,fever,0,72
+random,73,Pashtun Horse Dealer,False,13,1940,heatstroke,0,73
+random,74,Uzbek Trader,True,35,1277,,0,145
+random,75,Yarkandi Trader,False,16,1508,heatstroke,0,106
+random,76,Persian Trader,False,18,1924,exhaustion,0,72
+random,77,Armenian Trader,True,21,2578,,0,78
+random,78,Pashtun Horse Dealer,True,24,2135,,0,86
+random,79,Uzbek Trader,True,26,2214,,0,87
+random,80,Yarkandi Trader,False,25,1062,exhaustion,0,107
+random,81,Persian Trader,True,25,1443,,0,128
+random,82,Armenian Trader,False,18,1535,hunger,0,66
+random,83,Pashtun Horse Dealer,False,14,1377,wounds from bandits,0,65
+random,84,Uzbek Trader,False,21,1815,fever,0,108
+random,85,Yarkandi Trader,True,21,3518,,0,86
+random,86,Persian Trader,True,23,1709,,0,99
+random,87,Armenian Trader,False,15,1694,exhaustion,0,64
+random,88,Pashtun Horse Dealer,False,22,1329,exhaustion,0,107
+random,89,Uzbek Trader,False,27,1565,"dysentery, the bloody flux",0,147
+random,90,Yarkandi Trader,False,20,2153,heatstroke,0,96
+random,91,Persian Trader,False,16,1862,fever,0,36
+random,92,Armenian Trader,False,14,1660,hunger,0,61
+random,93,Pashtun Horse Dealer,False,18,1598,fever,0,74
+random,94,Uzbek Trader,True,26,1926,,0,140
+random,95,Yarkandi Trader,True,19,1706,,0,92
+random,96,Persian Trader,False,18,1602,wounds from bandits,0,111
+random,97,Armenian Trader,True,22,2362,,0,91
+random,98,Pashtun Horse Dealer,True,20,1935,,0,93
+random,99,Uzbek Trader,True,27,2128,,0,91
+random,100,Yarkandi Trader,False,25,1664,drowning,0,113

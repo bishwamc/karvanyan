@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Long Road East: Kabul to Dhaka, 1665</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,400;0,500;0,700;1,400&family=Yatra+One&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#dde4f0; --panel:#f8f6ef; --panel2:#ecebe4; --ink:#16204a; --muted:#51608c;
+  --gold:#a97a1a; --gold-line:#c79a32; --accent:#a8281a; --good:#2a7a5a;
+  --btn:#1b2a5c; --btn-ink:#f6ecd0; --line:#b9c1d8; --stone:#b79a63;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1430; --panel:#16204a; --panel2:#1f2c60; --ink:#efe7d2; --muted:#a9b3d6;
+    --gold:#e5b44d; --gold-line:#e5b44d; --accent:#ff9a82; --good:#6fd0a6;
+    --btn:#e5b44d; --btn-ink:#14204a; --line:#33437f; --stone:#d2b36f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1430; --panel:#16204a; --panel2:#1f2c60; --ink:#efe7d2; --muted:#a9b3d6;
+  --gold:#e5b44d; --gold-line:#e5b44d; --accent:#ff9a82; --good:#6fd0a6;
+  --btn:#e5b44d; --btn-ink:#14204a; --line:#33437f; --stone:#d2b36f;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Alegreya",Georgia,"Times New Roman",serif;font-size:18px;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:14px 14px 40px}
+h1,h2,h3,h4{font-family:"Yatra One","Alegreya",Georgia,serif;font-weight:400;margin:0}
+h1{font-size:1.9rem;line-height:1.1}
+h2{font-size:1.5rem;margin-bottom:.3rem}
+h3{font-size:1.15rem;margin:1.1rem 0 .4rem}
+h4{font-size:1rem;margin:.2rem 0 .3rem}
+p{margin:.45rem 0}
+.muted{color:var(--muted)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
+.sub{margin:.15rem 0 0;color:var(--muted);font-size:.95rem}
+.tools{display:flex;gap:6px}
+.tool{min-height:44px;min-width:44px;padding:0 .7rem;font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--gold-line);border-radius:3px;cursor:pointer}
+.tool:hover{background:var(--btn);color:var(--btn-ink)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.hud{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:3px 6px;display:flex;flex-direction:column;align-items:center;line-height:1.15}
+.chip .ic{font-size:1rem}.chip .lb{font-size:.72rem;color:var(--muted)}.chip b{font-size:1rem}
+.dateline{grid-column:1/-1;text-align:center;color:var(--muted);font-size:.95rem}
+
+.ribbon{position:relative;height:84px;margin:4px 0 12px}
+.ribbon .line{position:absolute;top:44px;left:6%;right:6%;height:0;border-top:2px dashed var(--gold-line)}
+.ribbon .node{position:absolute;top:22px;transform:translateX(-50%);text-align:center;width:74px}
+.minar{width:14px;height:28px;margin:0 auto;background:var(--stone);clip-path:polygon(20% 0,80% 0,100% 100%,0 100%);opacity:.55}
+.node.done .minar{opacity:1}.node.here .minar{opacity:1;background:var(--accent)}
+.node span{display:block;font-size:.8rem;line-height:1.1;margin-top:2px}
+.caravan{position:absolute;top:0;transform:translateX(-50%);font-size:1.6rem;transition:left .6s linear}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:18px 16px;box-shadow:inset 0 0 0 4px var(--panel),inset 0 0 0 5px var(--gold-line)}
+.msg{background:var(--panel2);border-left:4px solid var(--gold-line);padding:.5rem .7rem;margin:.6rem 0}
+.mono{font-style:italic;color:var(--ink)}
+.result{border-left:4px solid var(--good);padding:.3rem .7rem;margin:.7rem 0;background:var(--panel2)}
+
+.btn{display:block;width:100%;min-height:44px;margin:6px 0;padding:.55rem .85rem;text-align:left;font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--gold-line);border-radius:3px;cursor:pointer}
+.btn:hover:not([disabled]){background:var(--btn);color:var(--btn-ink)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--btn);color:var(--btn-ink);text-align:center;font-weight:700}
+.btn.primary:hover:not([disabled]){background:var(--accent);color:#fff}
+.btn.on{background:var(--btn);color:var(--btn-ink);font-weight:700}
+.seg{display:flex;gap:6px}.seg .btn{text-align:center;margin:0;padding:.4rem .3rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.row{display:flex;gap:8px}.row .btn{text-align:center}
+.ctl{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:.8rem 0}
+
+.party{display:grid;gap:5px;margin:.7rem 0}
+.mem{display:grid;grid-template-columns:minmax(90px,1.1fr) 2fr 70px;gap:8px;align-items:center;font-size:.95rem}
+.mem em{font-style:normal;text-align:right;color:var(--muted);font-size:.85rem}
+.bar{display:block;height:9px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--good)}
+.mem.fair .bar i{background:#b8a02e}.mem.poor .bar i{background:#d08a2a}.mem.vpoor .bar i,.mem.dying .bar i{background:var(--accent)}
+.mem.dead{opacity:.45;text-decoration:line-through}
+
+.prog{height:16px;background:var(--panel2);border:1px solid var(--gold-line);border-radius:8px;overflow:hidden;margin:.6rem 0 .2rem}
+.prog i{display:block;height:100%;background:var(--gold-line);transition:width .6s linear}
+.log{list-style:none;margin:0;padding:0;font-size:.95rem;min-height:5.5em}
+.log li{padding:2px 0;border-bottom:1px dotted var(--line)}
+
+.card{border:1px solid var(--gold-line);background:var(--panel2);padding:.6rem .8rem;margin:.6rem 0;border-radius:3px}
+.card b{font-family:"Yatra One",Georgia,serif;font-weight:400}
+.kind{display:inline-block;font-size:.8rem;padding:0 .45rem;border:1px solid var(--gold-line);border-radius:10px;margin-right:.4rem;color:var(--muted)}
+.locked{opacity:.6;font-style:italic}
+
+.scen{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:.8rem 0}
+.scen div{border:1px solid var(--line);padding:.5rem;font-size:.9rem;border-radius:3px;background:var(--panel2)}
+.scen .act{border:2px solid var(--gold-line)}.scen .lock{opacity:.6}
+.mc{border:1px solid var(--line);border-radius:3px;padding:.7rem .8rem;margin:.7rem 0;background:var(--panel2)}
+.mc h3{margin:0 0 .2rem}.mc .facts{font-size:.92rem;color:var(--muted)}
+
+.overlay{position:fixed;inset:0;background:rgba(5,9,25,.72);display:flex;align-items:flex-start;justify-content:center;padding:calc(14px + env(safe-area-inset-top,0px)) 12px calc(14px + env(safe-area-inset-bottom,0px));overflow-y:auto;z-index:20}
+.overlay .panel{width:100%;max-width:640px}
+.note{margin-top:18px;font-size:.88rem;color:var(--muted);text-align:center}
+.score{width:100%;border-collapse:collapse;margin:.6rem 0}
+.score td{padding:.25rem .3rem;border-bottom:1px dotted var(--line)}.score td:last-child{text-align:right}
+.score tr.tot td{font-weight:700;border-bottom:2px solid var(--gold-line)}
+@media (max-width:480px){body{font-size:17px}.mem{grid-template-columns:1fr 1fr 60px}.scen{grid-template-columns:1fr}}
+.dayhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-bottom:2px solid var(--gold-line);padding-bottom:.3rem;margin-bottom:.6rem}
+.dayhead b{font-family:"Yatra One",Georgia,serif;font-weight:400;font-size:1.6rem}
+.dayhead span{color:var(--muted)}
+.msg.warn{border-left-color:var(--accent)}
+.btn small{display:block;font-size:.85rem;color:var(--muted)}
+.btn:hover:not([disabled]) small{color:inherit}
+.btn.sell{border-left:6px solid var(--good)}
+.btn.buy{border-left:6px solid var(--gold-line)}
+.field-row{display:grid;grid-template-columns:110px 1fr;gap:8px;align-items:center;margin:6px 0}
+.field-row input{font:inherit;padding:.45rem .6rem;min-height:44px;border:1px solid var(--gold-line);border-radius:3px;background:var(--panel2);color:var(--ink)}
+.huntfield{position:relative;height:240px;overflow:hidden;border:2px solid var(--gold-line);border-radius:4px;background:linear-gradient(var(--panel2),var(--panel));cursor:crosshair;touch-action:manipulation}
+.prey{position:absolute;left:-10%;font-size:2rem;line-height:1;background:none;border:0;padding:6px;cursor:crosshair;color:inherit}
+@media (prefers-reduced-motion:reduce){.caravan,.prog i{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>The Long Road East</h1>
+      <p class="sub">Kabul to Dhaka on the Grand Trunk Road</p>
+    </div>
+    <div class="tools">
+      <button class="tool" id="btnCodex" type="button">📖 Codex</button>
+      <button class="tool" id="btnTheme" type="button" aria-label="Switch between light and dark">◐</button>
+    </div>
+  </header>
+  <div id="hudHost"></div>
+  <div id="ribbonHost"></div>
+  <main id="screen"></main>
+  <div id="modalHost"></div>
+  <div id="codexHost"></div>
+  <p class="note">Demo slice: Kabul to Attock. Distances are in kos, about 3 to 4 km each. Prices, stats and events are first drafts.</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- helpers ---------- */
+const $=(s)=>document.querySelector(s);
+const scr=$('#screen');
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const chance=p=>Math.random()<p;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+let G=null, reg=[], timer=null;
+const TICK_MS=1400;
+const PERSIST=true; // graves and the top-ten list are kept in this browser only
+function load(k,d){ if(!PERSIST)return d; try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
+function store(k,v){ if(!PERSIST)return; try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function B(label,fn,cls,dis){ reg.push(fn); return '<button type="button" class="btn '+(cls||'')+'" data-r="'+(reg.length-1)+'"'+(dis?' disabled':'')+'>'+label+'</button>'; }
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-r]'); if(!b||b.disabled)return; const f=reg[+b.dataset.r]; if(f)f(); });
+
+/* ---------- rules ---------- */
+// Distance is measured in kos (roughly 3 to 4 km). Food is measured in person-days.
+const PACES={
+  steady:{label:'Steady',kos:6,hp:0,lame:0},
+  hard:{label:'Hard',kos:8,hp:-2.5,lame:.02},
+  forced:{label:'Forced',kos:10,hp:-5,lame:.06}
+};
+const RATIONS={
+  filling:{label:'Filling',per:1,hp:1},
+  meager:{label:'Meager',per:0.66,hp:-1.5},
+  bare:{label:'Bare bones',per:0.33,hp:-4}
+};
+const FOOD_PACK=20, FOOD_COST=40, FODDER_PACK=20, FODDER_COST=15, MED_COST=60, GUIDE_COST=30, ONWARD=55;
+
+const MERCHANTS=[
+ {id:'persian',name:'Persian Trader',from:'Isfahan',icon:'🧶',cargo:'Carpets and rosewater',tags:['carpets','scent'],cash:900,party:['Hadi','Reza','Karim','Bahram'],animals:6,guard:2,mult:1,food:30,fodder:35,goods:10,med:1,diff:'Easiest',
+  ab:'Farman',abText:'A court letter. It clears one toll or checkpoint.'},
+ {id:'armenian',name:'Armenian Trader',from:'New Julfa',icon:'🧵',cargo:'Raw silk',tags:['silk'],cash:700,party:['Hovsep','Petros','Sargis','Avetik'],animals:5,guard:2,mult:1.25,food:30,fodder:30,goods:10,med:1,diff:'Easy',
+  ab:'Network',abText:'Fellow Armenians give you food and coins at your first 3 towns.'},
+ {id:'pashtun',name:'Pashtun Horse Dealer',from:'Ghazni',icon:'🐎',cargo:'Horses and dried fruit',tags:['horses','fruit'],cash:500,party:['Gul','Zarmast','Rahim','Wali','Dost'],animals:6,guard:4,mult:1.5,food:40,fodder:35,goods:8,med:1,diff:'Hard',
+  ab:'Highlander',abText:'No toll at the Khyber Pass. Strong guards.'},
+ {id:'uzbek',name:'Uzbek Trader',from:'Bukhara',icon:'🐪',cargo:'Karakul lambskins and dried fruit',tags:['fur','fruit'],cash:500,party:['Bakhtiyar','Olim','Timur','Rustam'],animals:8,guard:2,mult:1.5,food:32,fodder:45,goods:8,med:1,diff:'Hard',
+  ab:'Camel master',abText:'Your animals tire slowly. You travel 10% faster and rarely lose animals.'},
+ {id:'yarkandi',name:'Yarkandi Trader',from:'Yarkand',icon:'🧭',cargo:'Musk, rhubarb and Chinese silk',tags:['musk','silk'],cash:300,party:['Abdurahman','Tursun','Nurmuhammad'],animals:4,guard:1,mult:2,food:24,fodder:22,goods:6,med:4,diff:'Hardest',
+  ab:'Silk Road goods',abText:'A Turkic Muslim trader carrying Chinese goods over the Pamirs. Rare goods sell for double in Delhi and Agra (full game). Rhubarb is medicine, so you carry extra.'}
+];
+
+const ROUTE=['kabul','jalalabad','khyber','peshawar','attock'];
+const EDGES={
+ kabul:[{to:'jalalabad',kos:42,name:'The Kabul River road',risk:.22,w:{wolves:.25,sick:.1,trader:.25,bandits:.15,water:.1,trade:.15},cold:true,game:['🐦','🐏'],
+   flavor:['Snow shines on the peaks behind you.','You cross a river on a stone bridge.','Terraced fields cling to the hillsides.','A shepherd waves from a rocky slope.']}],
+ jalalabad:[{to:'khyber',kos:22,name:'The road to the pass',risk:.26,w:{bandits:.35,wolves:.15,sick:.1,trader:.15,water:.15,trade:.1},low:true,game:['🐦','🐇'],
+   flavor:['The hills turn dry and brown.','A caravan of camels passes, heading west.','You see a watchtower on a ridge.','Dust rises from the road.']}],
+ khyber:[{to:'peshawar',kos:15,name:'Down from the pass',risk:.3,w:{bandits:.45,wolves:.1,sick:.1,trader:.15,water:.1,trade:.1},low:true,game:['🐇'],
+   flavor:['The mountains fall behind you.','The valley opens into wide plains.','You smell woodsmoke from a village.']}],
+ peshawar:[{to:'attock',kos:27,name:'The road past Akora, home of the Khattaks',risk:.24,w:{bandits:.25,water:.2,trade:.2,trader:.2,sick:.1,wolves:.05},low:true,game:['🐦','🐇','🦌'],
+   flavor:['Wheat fields stretch across the Peshawar valley.','You pass the village of Akora, home of the Khattak chiefs.','A Mughal courier gallops past toward Peshawar.','Ahead, you glimpse the walls of Attock Fort.']}],
+ attock:[]
+};
+
+const CARDS={
+ kab_then:{stop:'kabul',kind:'Then',title:"Babur's Garden",text:"Babur, founder of the Mughal empire, died in Agra in 1530. He was first buried there, but, as he had wished, his body was later carried back to Kabul and laid in this terraced garden. In 1647 Shah Jahan added a small white marble mosque beside the grave."},
+ kab_now:{stop:'kabul',kind:'Now',title:'Gate of the Empire',text:"In 1665 Kabul is a Mughal province and the empire's north-west gate. Aurangzeb rules from Delhi. Every autumn, caravans and Afghan trading clans leave Kabul for India before snow closes the passes. Horses, dried fruit and Central Asian goods go east; Indian cloth, indigo and sugar come back."},
+ kab_food:{stop:'kabul',kind:'Food',title:'Kabul Fruit',text:"Kabul is famous for grapes, pomegranates, apricots and melons. Dried fruit keeps for months, so caravans carry it all over Asia. Babur wrote lovingly about Kabul's fruit in his memoirs, the Baburnama, and missed it badly in hot Hindustan."},
+ kab_balkh:{stop:'kabul',kind:'Then',title:'The Balkh Disaster',text:"Only 18 years ago, in 1646 and 1647, Shah Jahan sent armies north over the Hindu Kush to conquer Balkh, the Mughals' old homeland. The campaign failed. During the retreat through the snowy mountains, thousands of soldiers and animals died."},
+ kab_coin:{stop:'kabul',kind:'Trade',title:'The Silver Rupee',text:"Your coins are silver rupees. Sher Shah Suri issued the silver rupiya in the 1540s, and the Mughals kept it. Mughal coins carry Persian writing, not portraits: the emperor's name, the mint town and the date. Aurangzeb even removed the Muslim creed from his coins, so it would not be touched by unclean hands."},
+ kab_echo:{stop:'kabul',kind:'Echo',title:'The Giant Buddhas',text:"About a week's ride west, two giant Buddhas stand carved into the cliffs at Bamiyan. They were made around 600 CE, more than a thousand years before your journey. By 1665 nobody there worships them, but travelers still marvel at them."},
+
+ jal_then:{stop:'jalalabad',kind:'Then',title:"Babur's Garden of Loyalty",text:"In 1508 Babur laid out the Bagh-e-Wafa, the Garden of Loyalty, in this valley. He wrote proudly of its oranges and pomegranates. Later, by tradition, Akbar named the town Jalalabad after himself, Jalal-ud-din."},
+ jal_now:{stop:'jalalabad',kind:'Now',title:'The Sarai Crowd',text:"Jalalabad is much lower than Kabul, so it is warm even in winter. It is the last big stop before the Khyber Pass. Its sarai is packed with camels, horses, merchants and soldiers, and crowds like this spread sickness."},
+ jal_food:{stop:'jalalabad',kind:'Food',title:'Sugarcane and Oranges',text:"The warm valley grows sugarcane, oranges and rice, things that cannot grow in cold Kabul. Babur noticed this sharp change: a short ride down the river takes you from a world of snow to a world of citrus."},
+ jal_echo:{stop:'jalalabad',kind:'Echo',title:'Hadda in Ruins',text:"Near Jalalabad lies Hadda, once a great Buddhist town with hundreds of stupas. Chinese pilgrims, Faxian around 400 CE and Xuanzang around 630 CE, came here to see a relic said to be a bone from the Buddha's skull. By 1665 Hadda is only mounds in the hills."},
+
+ khy_then:{stop:'khyber',kind:'Then',title:'A Pass of Armies',text:"Alexander the Great's army marched down the Kabul River valley toward the Indus in 327 BCE. Later came Kushan kings, Mahmud of Ghazni and Babur. Under Akbar, Mughal engineers widened the Khyber road so carts could cross it."},
+ khy_now:{stop:'khyber',kind:'Now',title:'Allowances and Tolls',text:"The Afridi and other Pashtun clans live in these mountains. Mughal emperors paid them yearly allowances to keep the pass open, and caravans paid tolls too. It was cheaper than fighting a war in hills that no army could fully control."},
+ khy_people:{stop:'khyber',kind:'People',title:'The Warrior Poet in Chains',text:"Khushal Khan Khattak, chief of the Khattak clan and a great Pashto poet, once served the Mughals. Around 1664 Aurangzeb had him arrested and sent to a fortress prison in India. As you cross the pass in 1665, he is still a prisoner. Later he will write poems calling Pashtuns to unite against the Mughals."},
+ khy_echo:{stop:'khyber',kind:'Echo',title:'The Revolt of 1672',text:"In 1672, only seven years after your trip, the Afridis and Mohmands rose against Aurangzeb and destroyed a Mughal army in this pass. The emperor himself came north to restore order. A road stays open only while the people beside it are satisfied."},
+
+ pes_then:{stop:'peshawar',kind:'Then',title:'City of Kings',text:"Peshawar is one of the oldest living cities in South Asia. In the 2nd century CE, as Purushapura, it was a capital of the Kushan king Kanishka, who ruled lands from Central Asia to the Ganges and supported Buddhism. Tradition says Akbar gave the city its present name."},
+ pes_now:{stop:'peshawar',kind:'Now',title:'Gateway Between Worlds',text:"In 1665 Peshawar is the meeting point of India and Central Asia. A Mughal governor rules from the Bala Hisar fort. The Mahabat Khan mosque, named after a Mughal governor and begun around 1630, rises above the bazaar."},
+ pes_qissa:{stop:'peshawar',kind:'Culture',title:'Storytellers Bazaar',text:"Qissa Khwani means 'Storytellers' Bazaar.' Here travelers rested and shared tales from Kabul, Bukhara and Hindustan. Before newspapers, news and stories moved along the road the same way goods did."},
+ pes_road:{stop:'peshawar',kind:'Road',title:"Sher Shah's Road",text:"Sher Shah Suri ruled north India from 1540 to 1545. In those few years he rebuilt the old road from Sonargaon in Bengal to the Indus, with shade trees, wells and many sarais. Akbar and Jahangir added kos minars, brick towers marking each kos. The British later called it the Grand Trunk Road."},
+ pes_gor:{stop:'peshawar',kind:'Culture',title:'Gor Khatri',text:"On the city's high ground stands Gor Khatri, a holy place where Hindu yogis shaved their heads. Babur came to see it in 1505 and wrote about it in his memoirs. Peshawar has always mixed Muslims, Hindus and travelers from many lands."},
+ road_bandit:{stop:'road',kind:'Road',title:'Keeping the Road Safe',text:'Sher Shah Suri made local village headmen answer for robberies in their area, and built sarais so travelers could sleep behind walls. The Mughals kept the system, but bandits never fully went away.'},
+ road_wolves:{stop:'road',kind:'Road',title:'Behind Sarai Walls',text:'Sarais had high walls and one strong gate. Caravans slept inside with their animals when they could. Camping in the open was riskier.'},
+ road_sick:{stop:'road',kind:'Road',title:'Hakims and Medicine',text:'Crowded sarais and camps spread sickness. Travelers carried medicines such as rhubarb root, and hakims, doctors trained in Unani (Greek-Islamic) medicine, treated the sick.'},
+ road_village:{stop:'road',kind:'Road',title:'Villages of the Road',text:'Villages near the road sold food and fodder to caravans. A busy road made villages richer, and a quiet one made them poorer.'},
+ road_cold:{stop:'road',kind:'Road',title:'Racing the Snow',text:'Caravans left Kabul in autumn to get through the mountains before winter. Late travelers faced freezing nights and snowed-in passes.'},
+ pes_hamza:{stop:'peshawar',kind:'Culture',title:'The Tale of Amir Hamza',text:"Storytellers across the Persian-speaking world recited the Dastan of Amir Hamza, the adventures of the Prophet's uncle against giants and sorcerers. Emperor Akbar had it painted as the Hamzanama: about 1,400 large paintings on cloth, made over some 15 years."},
+ att_now:{stop:'attock',kind:'Now',title:"Akbar's Fortress",text:"Akbar built Attock Fort in 1581 to 1583 to guard the main crossing of the Indus, the gateway between Punjab and the north-west. In 1665 its garrison and boatmen decide who crosses, and when."},
+ att_river:{stop:'attock',kind:'Road',title:'Where Two Rivers Meet',text:"At Attock the muddy Kabul River pours into the clear, blue Indus, and the current swirls in whirlpools. In the dry season the Mughals laid a bridge of boats across the river. In the summer floods it was taken up, and travelers had to risk the ferries."},
+ att_skins:{stop:'attock',kind:'Culture',title:'Rafts of Skins',text:"Boatmen on the Indus and Kabul rivers crossed on inflated animal skins, lying on them and kicking their legs. Rafts of skins tied together carried goods across."},
+ att_echo:{stop:'attock',kind:'Echo',title:"Alexander's Bridge",text:"A few miles upstream, at Hund, the army of Alexander the Great crossed the Indus on a bridge of boats in 326 BCE. Almost two thousand years later, caravans still cross the same river the same way."},
+ road_water:{stop:'road',kind:'Road',title:'Clean Water',text:"Dirty water spread dysentery, which travelers called the bloody flux. Sarais were built beside wells and water tanks so that caravans could drink safely."},
+ road_trade:{stop:'road',kind:'Road',title:'Trading on the Road',text:"Caravans going in opposite directions traded with each other. Coins were not always needed: food, fodder and goods could simply be swapped, along with news of the road ahead."},
+ road_hunt:{stop:'road',kind:'Road',title:'The Hunt',text:"Mughal emperors loved shikar, the royal hunt, with hawks, cheetahs and huge beats of hunters. Ordinary travelers hunted too: partridges, hares and wild sheep could feed a hungry caravan."},
+ road_heat:{stop:'road',kind:'Road',title:'Heat on the Plains',text:"Before the cool season the plains are fiercely hot. Caravans set out before dawn and rested through midday. Sher Shah Suri planted shade trees along the road to protect travelers from the sun."},
+ pes_echo:{stop:'peshawar',kind:'Echo',title:"Kanishka's Great Tower",text:"Chinese pilgrims, from Faxian around 400 CE to Xuanzang around 630 CE, wrote about a giant stupa at Peshawar built by King Kanishka, one of the tallest buildings of its age. By 1665 it is only a mound outside the city. Its relic casket will not be dug up until 1909."}
+};
+
+const STOPS={
+ kabul:{name:'Kabul',icon:'🏔️',town:true,wants:['silk','carpets','porcelain'],famous:"Babur's garden, fruit and horse markets",cards:['kab_then','kab_now','kab_coin','kab_food','kab_balkh','kab_echo']},
+ jalalabad:{name:'Jalalabad',icon:'🌴',town:true,wants:['scent','carpets'],famous:'A warm green valley below the mountains',cards:['jal_now','jal_food','jal_then','jal_echo']},
+ khyber:{name:'Khyber Pass',icon:'⛰️',town:false,wants:[],famous:'The narrow gate between Afghanistan and India',cards:['khy_now','khy_people','khy_then','khy_echo']},
+ attock:{name:'Attock',icon:'🌊',town:true,wants:['horses','fur','carpets'],famous:"Akbar's fortress above the Indus crossing",cards:['att_now','att_river','att_skins','att_echo']},
+ peshawar:{name:'Peshawar',icon:'🕌',town:true,wants:['musk','horses','fur','silk'],famous:'City of travelers and storytellers',cards:['pes_now','pes_qissa','pes_hamza','pes_road','pes_gor','pes_echo','pes_then']}
+};
+
+/* ---------- state ---------- */
+function newGame(m,names,month){
+  G={m:m,month:month,screen:'title',day:0,money:m.cash,food:m.food,fodder:m.fodder,goods:m.goods,med:m.med,animals:m.animals,
+     party:names.map(n=>({name:n,hp:100,alive:true,sick:false,ill:null,died:null})),
+     pace:'steady',rations:'filling',node:'kabul',edge:null,kos:0,segEvents:0,
+     codex:new Set(),newCards:0,log:[],msg:'',paused:false,modal:false,codexOpen:false,over:null,net:0,
+     farman:m.id==='persian',mo:null,deaths:[],notes:[],starving:false};
+}
+const alive=()=>G.party.filter(p=>p.alive);
+const guard=()=>G.m.guard;
+function L(t){ G.log.push({d:G.day,t:t}); }
+function give(id){ if(id && CARDS[id] && !G.codex.has(id)){ G.codex.add(id); G.newCards++; updateCodexBtn(); } }
+function updateCodexBtn(){ $('#btnCodex').textContent='📖 Codex'+(G&&G.newCards?' ('+G.newCards+' new)':''); }
+function note(icon,title,text){ G.notes.push({icon:icon,title:title,text:text}); }
+function hLabel(hp){ return hp>=75?['Good','good']:hp>=50?['Fair','fair']:hp>=30?['Poor','poor']:hp>=10?['Very poor','vpoor']:['Dying','dying']; }
+const CAUSE={hunger:'hunger',sickness:'fever',fever:'fever',dysentery:'dysentery, the bloody flux',drowning:'drowning',heat:'heatstroke',exhaustion:'exhaustion',bandits:'wounds from bandits',wolves:'wolf bites',conflict:'wounds from a clash in the pass',cold:'the cold'};
+function where(){
+  if(G.screen==='travel' && G.edge){ const left=Math.max(0,Math.round(G.edge.kos-G.kos)); return 'on the road from '+STOPS[G.node].name+' to '+STOPS[G.edge.to].name+', '+left+' kos short of '+STOPS[G.edge.to].name; }
+  return 'at '+STOPS[G.node].name;
+}
+function damage(p,amt,cause){
+  if(!p.alive) return;
+  p.hp-=amt;
+  if(p.hp<=0){
+    p.hp=0; p.alive=false; p.died={cause:cause,day:G.day,where:where()};
+    G.deaths.push({name:p.name,cause:cause,day:G.day,where:p.died.where});
+    L(p.name+' has died of '+CAUSE[cause]+'.');
+    const leader=(p===G.party[0]);
+    note('🪦',p.name+' has died',p.name+' died of '+CAUSE[cause]+' on day '+G.day+', '+p.died.where+'. '+
+      (leader?'He was the leader of your caravan.':'You bury him beside the road and mark the grave with a pile of stones.'));
+    if(!G.over && (leader || alive().length===0)) G.over={cause:cause,who:p.name};
+  }
+}
+function pay(a){
+  if(G.money>=a){ G.money-=a; return 'You pay '+a+' rupees.'; }
+  const m=G.money, short=a-m, bundles=Math.min(G.goods,Math.ceil(short/35));
+  G.money=0; G.goods-=bundles; return 'You pay '+m+' rupees and '+bundles+' bundles of goods.';
+}
+function dateText(){ const d=new Date(1665,(G?G.month:9),15+(G?G.day:0)); return d.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+' (1076 AH)'; }
+
+function speedInfo(){
+  const r=[]; let f=1; const live=alive();
+  const a=clamp(G.animals/G.party.length,.5,1); if(a<1){ f*=a; r.push('too few animals'); }
+  const minhp=live.length?Math.min.apply(null,live.map(p=>p.hp)):100;
+  if(minhp<30){ f*=.7; r.push('a badly weakened traveler'); } else if(minhp<50){ f*=.85; r.push('weak travelers'); }
+  const sick=live.filter(p=>p.sick).length; if(sick){ f*=Math.max(.6,1-.12*sick); r.push(sick===1?'a sick traveler':sick+' sick travelers'); }
+  if(G.food<=0){ f*=.6; r.push('hunger'); }
+  if(G.fodder<=0){ f*=.75; r.push('hungry animals'); }
+  if(G.m.id==='uzbek') f*=1.1;
+  return {kos:Math.max(1,Math.round(PACES[G.pace].kos*f*10)/10),reasons:r};
+}
+
+function dailyTick(mode,msg){
+  G.day++;
+  if(msg) L(msg);
+  const live=alive(), R=RATIONS[G.rations], P=PACES[G.pace];
+  const need=R.per*live.length; let starved=false;
+  if(G.food>=need){ G.food=Math.round((G.food-need)*100)/100; } else { G.food=0; starved=true; }
+  const fneed=G.animals*0.5; let fstarve=false;
+  if(G.fodder>=fneed){ G.fodder=Math.round((G.fodder-fneed)*100)/100; } else { G.fodder=0; fstarve=true; }
+  if(starved && !G.starving) note('🍽️','Out of food','Your food has run out. Without food everyone loses strength fast, sickness spreads, and the caravan slows down. Buy food at the next town or village, or travelers will die.');
+  G.starving=starved;
+  for(const p of live){
+    let d = mode==='rest' ? 3+R.hp : mode==='hunt' ? R.hp : P.hp+R.hp;
+    if(starved) d-=12;
+    if(p.sick) d-=5;
+    const cause = p.sick?(p.ill||'fever') : starved?'hunger' : (mode==='travel' && P.hp<-1)?'exhaustion':'hunger';
+    if(d>=0) p.hp=Math.min(100,p.hp+d); else damage(p,-d,cause);
+    if(!p.alive) continue;
+    if(p.sick && chance(mode==='rest'?.3:.1)){ L(p.name+' has recovered from '+(p.ill==='dysentery'?'dysentery':'his fever')+'.'); p.sick=false; p.ill=null; }
+    else if(!p.sick && mode==='travel' && chance(.015+(p.hp<50?.05:0)+(G.rations==='bare'?.03:0)+(starved?.05:0))){
+      makeSick(p, chance(.3)?'dysentery':'fever');
+    }
+  }
+  if(fstarve){
+    L('The animals have no fodder.');
+    if(G.animals>0 && chance(G.m.id==='uzbek'?.25:.5)){ G.animals--; note('🐫','An animal has died','One of your animals died of hunger. Fewer animals means a slower caravan.'); }
+  }
+  if(mode==='travel' && G.edge && G.edge.low && G.month===8 && alive().length){
+    L('A hot, dusty day on the plains.'); give('road_heat');
+    alive().forEach(p=>damage(p,G.rations==='filling'?1.5:2.5,'heat'));
+  }
+  if(mode==='travel' && G.edge && G.edge.cold && G.month>=9 && G.day>(G.month===10?0:9) && alive().length){
+    L('Snow on the passes. A freezing night.'); give('road_cold');
+    alive().forEach(p=>damage(p,(G.rations==='filling'?1.5:3)*(G.month===10?1.6:1),'cold'));
+  }
+  if(mode==='travel' && P.lame && G.animals>0 && chance(P.lame*(G.m.id==='uzbek'?.5:1))){
+    G.animals--; L('An animal went lame.');
+    note('🐫','An animal went lame','The '+P.label.toLowerCase()+' pace was too much. One of your animals went lame and had to be left behind. Pushing hard saves days but costs animals and health.');
+  }
+}
+
+function makeSick(p,ill){
+  p.sick=true; p.ill=ill; L(p.name+' has '+(ill==='dysentery'?'dysentery':'a fever')+'.');
+  note('🤒',p.name+' is sick', ill==='dysentery'
+    ? p.name+' has dysentery, which travelers call the bloody flux. It comes from dirty water. A sick traveler loses health every day and slows the caravan. Medicine helps; rest gives a better chance to recover.'
+    : p.name+' has a high fever. A sick traveler loses health every day and slows the whole caravan. Medicine cures fever, and resting gives a better chance to recover.');
+}
+function weather(){
+  const e=G.edge;
+  if(e&&e.cold&&G.month>=9&&G.day>(G.month===10?0:9)) return pick(['Freezing wind','Light snow','Bitter cold']);
+  if(e&&e.low&&G.month===8) return pick(['Hot and dusty','Scorching sun','Hot and humid']);
+  if(e&&e.cold) return pick(['Cold and clear','Cool and windy','Clear, cold nights']);
+  return pick(['Clear and cool','Fine and mild','Cloudy','Windy']);
+}
+
+/* notices: shown one at a time, game pauses */
+function flushNotes(after){
+  if(!G.notes.length){ after&&after(); return; }
+  G.modal=true; const n=G.notes.shift();
+  $('#modalHost').innerHTML='<div class="overlay"><section class="panel"><h2>'+n.icon+' '+n.title+'</h2><p>'+n.text+'</p>'+
+    B('OK',()=>{ $('#modalHost').innerHTML=''; G.modal=false; flushNotes(after); },'primary')+'</section></div>';
+}
+
+/* ---------- moments: one per stop ---------- */
+function momentFor(id){
+  const m=G.m;
+  if(id==='kabul') return {icon:'🌄',title:'Kabul at dawn',multi:1,
+    text:[
+      'You stand above Kabul. Snow shines on the mountains. Below you is Bagh-e-Babur, a garden built in terraces.',
+      '<span class="mono">"Babur conquered Hindustan, but he loved Kabul," you think. "He asked to be buried here, among his fruit trees. Every caravan to Hindustan starts where he rests."</span>',
+      'It is autumn 1665, the season when caravans leave for India before snow closes the passes. Where do you go first?'],
+    choices:[
+      {label:'Walk the garden at dawn. It costs a day, but the party rests.',fn:()=>{ dailyTick('rest','You rest in Babur\'s garden.'); give('kab_then'); give('kab_coin');
+        return 'An old Mughal clerk is reading beside Babur\'s grave. "He died in Agra in 1530," the clerk says, "but he never stopped missing Kabul\'s melons and cool air. So his body was brought back here, as he wished. Shah Jahan built that little marble mosque in 1647." He taps your purse. "And your silver rupees? Sher Shah Suri struck the first ones, not the Mughals. Our emperors simply kept a good idea." Your party feels rested.'; }},
+      {label:'Go straight to the bazaar.',fn:()=>{ give('kab_now'); give('kab_food');
+        return 'The bazaar roars. Horse dealers shout prices for horses from the north. Fruit sellers sit behind mountains of raisins, dried apricots and mulberries; dried fruit keeps for months, so it travels all over Asia. A camel driver tells you the news: every caravan is leaving for India now, before winter snow shuts the passes.'; }}
+    ]};
+  if(id==='jalalabad') return {icon:'🍊',title:'A hungry traveler',multi:1,
+    text:[
+      'Your stomach growls. You have left cold Kabul behind, and the air here is warm. It smells of woodsmoke and baked bread.',
+      '<span class="mono">"Oranges and sugarcane," you think. "In Kabul they cannot grow. Here, a few days down the river, they grow everywhere."</span>',
+      'What will you eat?'],
+    choices:[
+      {label:'Buy oranges and sugarcane (pay 15 rupees).',dis:()=>G.money<15,fn:()=>{ G.money-=15; alive().forEach(p=>{p.hp=Math.min(100,p.hp+10)}); give('jal_food'); give('jal_then');
+        return 'A fruit seller grins as he hands over the oranges. "Babur Badshah himself planted a garden in this valley, the Bagh-e-Wafa, the Garden of Loyalty, in 1508. He boasted about its oranges and pomegranates in his book." The juice is sweet and cold. Everyone feels stronger.'; }},
+      {label:'Eat from your own supplies (uses 1 day of food).',fn:()=>{ G.food=Math.max(0,G.food-alive().length); give('jal_food');
+        return 'You chew hard naan and dried mulberries from Kabul. It fills you up. Around you, locals eat rice, oranges and sugarcane, crops of the warm valley that cold Kabul cannot grow.'; }},
+      {label:'Eat at the crowded sarai kitchen (pay 5 rupees).',dis:()=>G.money<5,fn:()=>{
+        G.money-=5; give('jal_now');
+        let t='The sarai is a square of rooms around a big courtyard, with one strong gate that is shut at night. It is packed with camels, horses and men from a dozen lands. You eat rice and mutton for 5 rupees. ';
+        const p=pick(alive());
+        if(chance(.4)){ p.sick=true; L(p.name+' has fallen ill.'); return t+'But crowds spread sickness. By evening, '+p.name+' has a fever.'; }
+        return t+'Crowds like this spread sickness, but tonight you are lucky. Nobody falls ill.'; }}
+    ]};
+  if(id==='khyber'){
+    const ch=[];
+    const done=t=>{ give('khy_now'); return t; };
+    if(m.id==='pashtun') ch.push({label:'Greet him in Pashto and name your clan (free).',fn:()=>{ give('khy_people');
+      return done('He studies you, then smiles. "A son of the hills! Go in peace." Then his face darkens. "Aurangzeb has thrown Khushal Khan Khattak into prison in India, a great chief and a great poet. The emperor buys our clans with money, but he does not trust us." Among the clans, kinship and honor open doors that money cannot.'); }});
+    if(G.farman) ch.push({label:'Show your farman, the court letter.',fn:()=>{ G.farman=false;
+      return done('His scribe reads it aloud. "Delhi pays our clans every year to keep this road open," the malik says, "and Delhi\'s paper is good. Pass." Your farman is used up.'); }});
+    ch.push({label:'Pay the toll (pay 120 rupees).',fn:()=>done(pay(120)+' The malik counts it slowly. "The emperor pays our clans every year to keep this road open, and merchants pay us too. When the payments stop, the road closes." His men lower their bows.')});
+    ch.push({label:'Haggle. Offer 70 rupees.',fn:()=>{
+      const p=clamp(.3+guard()*.07+(m.id==='armenian'?.2:0),.2,.8);
+      if(chance(p)) return done(pay(70)+' The malik laughs. "You bargain like a bazaar man. Fine. The emperor pays us more than you do."');
+      return done('The malik scowls. "Insult me, and the price rises!" '+pay(180));
+    }});
+    ch.push({label:'Refuse and push through.',fn:()=>{
+      if(chance(.25+guard()*.07)) return done('Your guards look steady. The malik tests your nerve, then waves you on in disgust. "Next time, merchant, my arrows will not wait."');
+      const lost=Math.ceil(G.goods*.5); G.goods-=lost; const v=pick(alive()); damage(v,rnd(20,40),'conflict');
+      return done('Arrows fly from the rocks. You lose '+lost+' bundles of goods'+(v.alive?', and '+v.name+' is wounded.':'.'));
+    }});
+    return {icon:'🧔',title:'A chief of the pass',multi:1,
+      text:['The road climbs into dry, rocky hills. At the narrowest place, a rider waits on the ridge. Men with bows and swords watch from the rocks above you.',
+            'He is an Afridi malik, a chief of the pass. He raises a hand. <span class="mono">"This road is old, and these hills are ours. Every caravan pays."</span>'],
+      choices:ch};
+  }
+  if(id==='attock'){
+    const high=(G.month===8);
+    const wait=G.waitBonus||0;
+    const risk=(base)=>clamp(base*(high?1.6:1)-wait,.02,.9);
+    const can=c=>G.money+G.goods*35>=c;
+    const lose=(pGoods,hurt)=>{ const lost=Math.ceil(G.goods*pGoods); G.goods-=lost; let t='You lose '+lost+' bundles of goods'; if(G.animals>0&&chance(.6)){G.animals--; t+=' and one animal';}
+      if(hurt){ const v=pick(alive()); damage(v,rnd(35,70),'drowning'); t+=(v.alive?'. '+v.name+' is pulled out half-drowned.':'. '+v.name+' is swept away by the current.'); } return t+'.'; };
+    const fin=t=>{ give('att_river'); G.waitBonus=0; return t; };
+    const ch=[];
+    ch.push({label:high?'Cross the bridge of boats (not laid yet: the river is too high)':'Cross the bridge of boats (pay '+(10+G.animals*2)+' rupees)',dis:()=>high||!can(10+G.animals*2),fn:()=>{
+      const paid=pay(10+G.animals*2)+' ';
+      if(chance(risk(.05))) return fin(paid+'The bridge sways in the current and a plank gives way. '+lose(.15,false));
+      return fin(paid+'Boats are chained side by side across the river, with planks laid over them. Your animals step nervously onto the swaying bridge, but you all cross safely.'); }});
+    ch.push({label:'Hire the ferry boats (pay 30 rupees)',dis:()=>!can(30),fn:()=>{
+      const paid=pay(30)+' ';
+      if(chance(risk(.12))) return fin(paid+'A whirlpool spins the ferry halfway across. '+lose(.25,chance(.3)));
+      return fin(paid+'The boatmen row hard across the current, landing far downstream. You are across.'); }});
+    ch.push({label:'Float across on inflated animal skins (pay 10 rupees)',dis:()=>!can(10),fn:()=>{
+      const paid=pay(10)+' '; give('att_skins');
+      if(chance(risk(.3))) return fin(paid+'The swimmers kick hard, but the current tears a raft loose. '+lose(.4,true));
+      return fin(paid+'Local swimmers lie on inflated buffalo skins, kicking their legs, and tow your goods across on rafts. It is frightening, but it works.'); }});
+    ch.push({label:'Swim the animals across yourselves (free, very dangerous)',fn:()=>{
+      if(chance(risk(.5))) return fin('Halfway across, the current takes hold. '+lose(.5,true));
+      return fin('You tie the goods high on the animals and drive them into the river. Soaked and terrified, you all reach the far bank.'); }});
+    ch.push({label:'Wait a day for calmer water',fn:()=>{
+      dailyTick('rest','You wait by the river at Attock.'); G.waitBonus=Math.min(.12,wait+.04); G.mo=null;
+      return '__wait__'; }});
+    return {icon:'🌊',title:'The Indus at Attock',multi:1,gives:['att_now'],
+      text:['Below the walls of Akbar\'s fortress, two rivers meet. The muddy Kabul River crashes into the wide, blue Indus, and the water swirls in whirlpools.',
+            'A boatman squints at the current. <span class="mono">"'+(high?'The summer floods are still high. The bridge of boats is not laid yet, and every crossing is dangerous.':'The water is low now, in the cool season. The bridge of boats is open, but the current is still strong.')+'"</span>',
+            '<b>River:</b> '+(high?'high and very fast':'low, but fast at the meeting of the rivers')+'. <b>Width:</b> several hundred paces. <b>Your load:</b> '+G.goods+' bundles, '+G.animals+' animals.'+(wait?' The water looks a little calmer today.':''),
+            'How will you cross?'],
+      choices:ch};
+  }
+  if(id==='peshawar') return {icon:'🏮',title:'The storyteller',multi:2,gives:['pes_now'],
+    text:['Evening in Peshawar. In a busy street, travelers sit on carpets by lamplight, sharing bread and sherbet. A white-bearded storyteller waves you over.',
+          '<span class="mono">"Sit, merchant. I have time for two stories before the evening prayer."</span>',
+          'Choose two things to ask him.'],
+    choices:[
+      {label:'Why is this street called Qissa Khwani?',fn:()=>{ give('pes_qissa'); give('pes_hamza');
+        return '"Qissa means story. This is the Storytellers\' Bazaar," he says. "Men from Bukhara, Kabul and Hindustan rest here at night, and men like me earn our bread with tales." Then he begins the Dastan of Amir Hamza: the adventures of the Prophet\'s uncle, who fights giants, sorcerers and demons across the world. "Emperor Akbar loved this tale so much," he says, "that his painters spent fifteen years painting it on great sheets of cloth."'; }},
+      {label:'What will I find on the road east to Lahore?',fn:()=>{ give('pes_road');
+        return '"First, the Indus at Attock," he says. "Akbar built a great fort there, more than eighty years ago, to guard the crossing. Then Rohtas, the mighty fortress of Sher Shah Suri, who rebuilt this whole road with shade trees, wells and sarais. Along the way you will see brick towers, kos minars, standing one kos apart so couriers know the distance. And then Lahore! Shah Jahan\'s Shalimar Gardens, with hundreds of fountains, and the Wazir Khan mosque, covered in tiles painted with blue and yellow flowers."'; }},
+      {label:'Are there ancient ruins near here?',fn:()=>{ give('pes_echo'); give('pes_then'); give('pes_gor');
+        return 'He points beyond the walls. "See that great mound? Farmers dig old bricks out of it. Long ago this city was Purushapura, capital of King Kanishka, and he built a tower there so tall that monks walked all the way from China to see it. A pilgrim named Xuanzang wrote about it a thousand years ago." He lowers his voice. "And on the high ground is Gor Khatri, where Hindu yogis shave their heads. Babur himself came to see it, the first time he rode down this road."'; }}
+    ]};
+}
+
+/* ---------- chrome ---------- */
+function stopTimer(){ if(timer){clearInterval(timer);timer=null;} }
+function hudHTML(){
+  const items=[['money','💰','Rupees'],['food','🍞','Food'],['fodder','🌾','Fodder'],['goods','📦','Goods'],['med','💊','Medicine'],['animals','🐫','Animals'],['party','👥','Party'],['day','🗓️','Day']];
+  return '<div class="hud" aria-label="Supplies"><div class="dateline" id="h-date"></div>'+items.map(i=>'<div class="chip"><span class="ic" aria-hidden="true">'+i[1]+'</span><span class="lb">'+i[2]+'</span><b id="h-'+i[0]+'">0</b></div>').join('')+'</div>';
+}
+function updateHud(){
+  if(!G||!$('#h-money'))return;
+  const set=(k,v)=>{ const e=$('#h-'+k); if(e)e.textContent=v; };
+  set('money',Math.round(G.money)); set('food',Math.floor(G.food)); set('fodder',Math.floor(G.fodder)); set('goods',G.goods);
+  set('med',G.med); set('animals',G.animals); set('party',alive().length+'/'+G.party.length); set('day',G.day);
+  const d=$('#h-date'); if(d)d.textContent=dateText();
+}
+function ribbonHTML(){
+  const pos=i=>6+88*i/(ROUTE.length-1);
+  return '<div class="ribbon" aria-hidden="true"><div class="line"></div>'+ROUTE.map((id,i)=>'<div class="node" id="n-'+id+'" style="left:'+pos(i)+'%"><div class="minar"></div><span>'+STOPS[id].name+'</span></div>').join('')+'<div class="caravan" id="caravan" style="left:6%">🐫</div></div>';
+}
+function updateRibbon(){
+  if(!G||!$('#caravan'))return;
+  const idx=ROUTE.indexOf(G.node);
+  const frac=(G.screen==='travel'&&G.edge)?clamp(G.kos/G.edge.kos,0,1):0;
+  $('#caravan').style.left=(6+88*(idx+frac)/(ROUTE.length-1))+'%';
+  ROUTE.forEach((id,i)=>{ const n=$('#n-'+id); if(!n)return; n.classList.toggle('done',i<idx||(i===idx&&G.screen!=='travel')); n.classList.toggle('here',i===idx&&G.screen!=='travel'); });
+}
+function showChrome(on){ $('#hudHost').innerHTML=on?hudHTML():''; $('#ribbonHost').innerHTML=on?ribbonHTML():''; updateHud(); updateRibbon(); updateCodexBtn(); }
+
+function partyHTML(){
+  return '<div class="party">'+G.party.map((p,i)=>{
+    const lb=p.alive?hLabel(p.hp):['Died: '+CAUSE[p.died.cause]+', day '+p.died.day,'dead'];
+    return '<div class="mem '+lb[1]+'"><span>'+p.name+(i===0?' (leader)':'')+(p.sick?' 🤒 '+(p.ill||'fever'):'')+'</span><span class="bar"><i style="width:'+(p.alive?Math.max(4,p.hp):0)+'%"></i></span><em>'+lb[0]+'</em></div>';
+  }).join('')+'</div>';
+}
+function controlsHTML(){
+  const seg=(obj,key)=>'<div class="seg">'+Object.keys(obj).map(k=>B(obj[k].label,()=>{G[key]=k;rerender();},G[key]===k?'on':'')).join('')+'</div>';
+  const PH={steady:'Steady: 6 kos a day. The party slowly recovers.',hard:'Hard: 8 kos a day. Tiring, and animals may go lame.',forced:'Forced: 10 kos a day. Exhausting; animals often go lame.'};
+  const RH={filling:'Filling: 1 food per person a day.',meager:'Meager: two-thirds as much. Slowly weakening.',bare:'Bare bones: one-third as much. Weakening fast, sickness likely.'};
+  return '<div class="ctl"><div><h4>Pace</h4>'+seg(PACES,'pace')+'<p class="muted">'+PH[G.pace]+'</p></div><div><h4>Rations</h4>'+seg(RATIONS,'rations')+'<p class="muted">'+RH[G.rations]+'</p></div></div>';
+}
+function forecastHTML(){
+  const live=alive().length||1;
+  const fd=Math.floor(G.food/(RATIONS[G.rations].per*live)), fo=G.animals?Math.floor(G.fodder/(G.animals*.5)):0;
+  const e=G.edge||(EDGES[G.node]||[])[0]; const sp=speedInfo();
+  const left=e?Math.max(0,e.kos-(G.edge?G.kos:0)):0, leg=e?Math.ceil(left/sp.kos):0;
+  const warn=e&&(fd<leg||fo<leg);
+  let t='Food lasts about '+fd+' days. Fodder lasts about '+fo+' days.';
+  if(e) t+=' '+STOPS[e.to].name+' is '+Math.ceil(left)+' kos away: about '+leg+' days at '+sp.kos+' kos a day.';
+  if(sp.reasons.length) t+=' Slowed by '+sp.reasons.join(', ')+'.';
+  if(warn) t+=' <b>You will run short before you arrive.</b> Buy more, or eat less.';
+  return '<div class="'+(warn?'msg warn':'msg')+'">'+t+'</div>';
+}
+function rerender(){ if(G.screen==='stop')renderStop(); else if(G.screen==='travel')renderTravel(); }
+
+/* ---------- title ---------- */
+function renderTitle(){
+  stopTimer(); reg=[]; G=null; showChrome(false);
+  scr.innerHTML='<section class="panel"><h2>Choose your journey</h2>'+
+   '<p>You are a merchant in Kabul with goods to sell and a letter of trade for Dhaka. Cross mountains and rivers, meet travelers, and learn the real history of the road as you go.</p>'+
+   '<div class="scen"><div class="act"><b>1665, Easy</b><br>Autumn. Aurangzeb rules from Delhi. His father Shah Jahan is a prisoner in Agra Fort. Bengal is ruled from Dhaka.</div><div class="lock"><b>1650, Normal</b><br>Coming next. Where is the capital of Bengal?</div><div class="lock"><b>1658, Hard</b><br>Coming next. A war of succession cuts the road.</div></div>'+
+   '<h3>Choose your merchant</h3>'+
+   MERCHANTS.map(m=>'<div class="mc"><h3>'+m.icon+' '+m.name+'</h3><div class="facts">From '+m.from+'. Cargo: '+m.cargo+'.<br>Rupees '+m.cash+', party '+m.party.length+', animals '+m.animals+', guards '+m.guard+'/5. Score x'+m.mult+' ('+m.diff+').</div><p><b>'+m.ab+':</b> '+m.abText+'</p>'+B('Travel as the '+m.name,()=>startGame(m),'primary')+'</div>').join('')+
+   '<h3>🏆 Masters of the Road</h3>'+topHTML(load('lre_top',null)||SEED_TOP)+'</section>';
+}
+function startGame(m){ renderSetup(m); }
+function renderSetup(m){
+  reg=[]; let month=9;
+  const draw=()=>{
+    reg=[];
+    scr.innerHTML='<section class="panel"><h2>'+m.icon+' Your caravan</h2><p>Name the people in your caravan. Use your own name and your friends\' names if you like.</p>'+
+      m.party.map((n,i)=>'<label class="field-row"><span>'+(i===0?'Leader':'Companion '+i)+'</span><input id="nm'+i+'" maxlength="16" value="'+esc(n)+'"></label>').join('')+
+      '<h3>When will you leave Kabul?</h3>'+
+      [[8,'September','Warm. The plains ahead are still very hot, and the Indus is still high from the summer floods.'],
+       [9,'October','The usual caravan season. Cool, but snow may come if you linger.'],
+       [10,'November','Late. Snow and freezing nights on the mountain road from the very start.']].map(o=>B('<b>'+o[1]+' 1665</b><br><small>'+o[2]+'</small>',()=>{ keep(); month=o[0]; draw(); },month===o[0]?'on':'')).join('')+
+      B('Begin the journey',()=>{ keep(); begin(); },'primary')+B('Back',()=>renderTitle())+'</section>';
+    names.forEach((n,i)=>{ const x=document.getElementById('nm'+i); if(x)x.value=n; });
+  };
+  const names=m.party.slice();
+  const keep=()=>{ m.party.forEach((_,i)=>{ const x=document.getElementById('nm'+i); if(x) names[i]=(x.value.trim()||m.party[i]).slice(0,16); }); };
+  const begin=()=>{ newGame(m,names.map(esc),month); showChrome(true); L('You leave Kabul with '+m.cargo.toLowerCase()+'.'); arrive('kabul'); };
+  draw();
+}
+
+/* ---------- arrival and moments ---------- */
+function arrive(id){
+  stopTimer(); G.node=id; G.kos=0; G.edge=null; G.msg=''; G.paused=false; G.screen='moment';
+  if(id!=='kabul') L('You reach '+STOPS[id].name+'.');
+  if(STOPS[id].town && G.m.id==='armenian' && G.net<3){ G.net++; G.food+=8; G.money+=20; G.msg='Armenian friends welcome you with 8 food and 20 rupees. ('+G.net+' of 3)'; }
+  const def=momentFor(id); (def.gives||[]).forEach(give);
+  G.mo={def:def,used:[],results:[],done:false};
+  updateHud(); updateRibbon(); renderMoment();
+}
+function renderMoment(){
+  reg=[]; const mo=G.mo, d=mo.def;
+  let h='<section class="panel"><h2>'+d.icon+' '+d.title+'</h2>'+d.text.map(t=>'<p>'+t+'</p>').join('');
+  mo.results.forEach(r=>{ h+='<div class="result">'+r+'</div>'; });
+  if(!mo.done){
+    d.choices.forEach((c,i)=>{ if(mo.used.indexOf(i)>-1)return; h+=B(c.label,()=>chooseMoment(i),'',c.dis&&c.dis()); });
+    if(d.multi>1 && mo.used.length>0) h+='<p class="muted">You can ask '+(d.multi-mo.used.length)+' more.</p>';
+  } else h+=B('Continue',()=>flushNotes(()=>{ if(G.over) endGame('dead'); else renderStop(); }),'primary');
+  scr.innerHTML=h+'</section>'; updateHud();
+}
+function chooseMoment(i){ const mo=G.mo; const r=mo.def.choices[i].fn(); if(r==='__wait__'){ G.mo={def:momentFor(G.node),used:[],results:[],done:false}; updateHud(); flushNotes(()=>{ if(G.over) endGame('dead'); else renderMoment(); }); return; } mo.results.push(r); mo.used.push(i); if(mo.used.length>=mo.def.multi) mo.done=true; renderMoment(); }
+
+/* ---------- stop ---------- */
+function unitPrice(){ const s=STOPS[G.node], i=ROUTE.indexOf(G.node); const match=G.m.tags.some(t=>s.wants.indexOf(t)>-1); return {price:Math.round(30*(1+0.25*i)*(match?1.5:1)),match:match}; }
+function renderStop(){
+  G.screen='stop'; stopTimer(); reg=[]; updateRibbon();
+  const s=STOPS[G.node], edge=(EDGES[G.node]||[])[0], live=alive().length||1;
+  let h='<section class="panel"><h2>'+s.icon+' '+s.name+'</h2><p class="muted">'+s.famous+'</p>';
+  if(G.msg) h+='<div class="msg">'+G.msg+'</div>';
+  if(G.node==='kabul' && G.day<=1){
+    const n=alive().length, legs=Object.keys(EDGES).reduce((a,k)=>a+(EDGES[k][0]?EDGES[k][0].kos:0),0), days=Math.ceil(legs/6);
+    h+='<div class="msg"><b>Daulat Beg, a karwan-bashi (caravan master), gives you advice:</b> "From here to Attock is '+legs+' kos, about '+days+' days at a steady pace. Your '+n+' people eat '+n+' food a day, so carry at least '+(n*8)+', enough to reach Jalalabad with some to spare. You can buy more on the way, but prices on the road are worse. Each animal eats half a bundle of fodder a day. Buy a medicine or two, because fevers are common. And sell little here: your goods fetch more the farther east you take them."</div>';
+  }
+  h+='<h3>Your party</h3>'+partyHTML()+controlsHTML()+forecastHTML();
+  if(s.town){
+    const u=unitPrice();
+    h+='<h3>💰 Sell your goods</h3><p>You carry <b>'+G.goods+' bundles</b> of '+G.m.cargo.toLowerCase()+'. Buyers here want '+s.wants.join(', ')+'. '+
+       (u.match?'They want your cargo, so they pay extra: ':'They do not especially want your cargo: ')+'<b>'+u.price+' rupees a bundle</b>.</p>'+
+       '<p class="muted">Goods are worth more the farther east you carry them. Unsold goods count '+ONWARD+' rupees each at the end of the demo.</p>';
+    const sell=n=>{ const k=Math.min(n,G.goods); G.money+=k*u.price; G.goods-=k; G.msg='You sold '+k+' bundle'+(k>1?'s':'')+' and received '+(k*u.price)+' rupees.'; updateHud(); renderStop(); };
+    h+='<div class="grid2">'+B('Sell 1 bundle<br><small>you get '+u.price+' rupees</small>',()=>sell(1),'sell',G.goods<1)+
+       B('Sell 5 bundles<br><small>you get '+u.price*Math.min(5,G.goods)+' rupees</small>',()=>sell(5),'sell',G.goods<1)+'</div>'+
+       B('Sell all '+G.goods+' bundles<br><small>you get '+u.price*G.goods+' rupees</small>',()=>sell(G.goods),'sell',G.goods<1);
+    const buy=(k,n,c,label)=>{ G.money-=c; G[k]+=n; G.msg='You bought '+label+' for '+c+' rupees.'; updateHud(); renderStop(); };
+    h+='<h3>🛒 Buy supplies</h3><p>You have <b>'+Math.round(G.money)+' rupees</b>.</p>'+
+       B('Buy '+FOOD_PACK+' food<br><small>you pay '+FOOD_COST+' rupees. Feeds your party about '+Math.floor(FOOD_PACK/live)+' days</small>',()=>buy('food',FOOD_PACK,FOOD_COST,FOOD_PACK+' food'),'buy',G.money<FOOD_COST)+
+       B('Buy '+FODDER_PACK+' fodder<br><small>you pay '+FODDER_COST+' rupees. Feeds your animals about '+(G.animals?Math.floor(FODDER_PACK/(G.animals*.5)):0)+' days</small>',()=>buy('fodder',FODDER_PACK,FODDER_COST,FODDER_PACK+' fodder'),'buy',G.money<FODDER_COST)+
+       B('Buy 1 medicine<br><small>you pay '+MED_COST+' rupees. Cures one fever</small>',()=>buy('med',1,MED_COST,'1 medicine'),'buy',G.money<MED_COST);
+  }
+  h+='<h3>🧭 People and places</h3>';
+  const locked=s.cards.filter(c=>!G.codex.has(c));
+  h+=B(locked.length?'Hire a local guide<br><small>you pay '+GUIDE_COST+' rupees. Learn something new about '+s.name+'</small>':'You have learned everything here',()=>{
+    G.money-=GUIDE_COST; const c=locked[0]; give(c); G.msg='Your guide tells you: <b>'+CARDS[c].title+'.</b> '+CARDS[c].text; updateHud(); renderStop(); window.scrollTo(0,0);
+  },'',!locked.length||G.money<GUIDE_COST);
+  h+=B('Rest a day<br><small>everyone recovers some health, but food is used</small>',()=>{
+    dailyTick('rest','You rest in '+s.name+'.'); G.msg='You rested for a day. Everyone feels a little better.'; updateHud();
+    flushNotes(()=>{ if(G.over) endGame('dead'); else renderStop(); });
+  });
+  if(edge) h+=B('Set out for '+STOPS[edge.to].name+' ('+edge.kos+' kos)',()=>startTravel(edge),'primary');
+  else h+=B('Finish the demo journey',()=>endGame('win'),'primary');
+  scr.innerHTML=h+'</section>'; updateHud();
+}
+
+/* ---------- travel ---------- */
+function startTravel(edge){
+  G.edge=edge; G.kos=0; G.segEvents=0; G.paused=false; G.msg=''; G.screen='travel';
+  L('You set out on '+edge.name+'.');
+  renderTravel(); stopTimer(); timer=setInterval(tickTravel,TICK_MS);
+}
+function renderTravel(){
+  G.screen='travel'; reg=[]; const e=G.edge;
+  scr.innerHTML='<section class="panel"><div class="dayhead"><b id="dayNum"></b><span id="dayDate"></span></div>'+
+    '<h2>On the road to '+STOPS[e.to].name+'</h2><p class="muted">'+e.name+'</p>'+
+    '<div class="prog"><i id="prog"></i></div><p id="progTxt"></p>'+controlsHTML()+'<div id="forecast"></div>'+
+    '<div class="row">'+B(G.paused?'▶ Resume':'⏸ Pause',()=>{ G.paused=!G.paused; renderTravel(); })+B('🏹 Hunt',()=>startHunt())+
+    B('Rest a day',()=>{ if(G.modal)return; dailyTick('rest','You rest by the road for a day.'); updateTravel(); flushNotes(()=>{ if(G.over){stopTimer();endGame('dead');} else updateTravel(); }); })+'</div>'+
+    '<h3>Party</h3><div id="partyHost"></div><h3>Trail log</h3><ul class="log" id="log"></ul></section>';
+  updateTravel();
+}
+function updateTravel(){
+  if(G.screen!=='travel')return;
+  const e=G.edge;
+  const set=(id,html)=>{ const x=$('#'+id); if(x)x.innerHTML=html; };
+  set('dayNum','Day '+G.day); set('dayDate',dateText()+'<br>'+(G.wx||'Clear'));
+  const pr=$('#prog'); if(pr)pr.style.width=clamp(G.kos/e.kos*100,0,100)+'%';
+  set('progTxt',(G.paused?'<b>Paused.</b> ':'')+Math.round(G.kos)+' of '+e.kos+' kos traveled.');
+  set('forecast',forecastHTML()); set('partyHost',partyHTML());
+  set('log',G.log.slice(-8).reverse().map(x=>'<li><b>Day '+x.d+':</b> '+x.t+'</li>').join(''));
+  updateHud(); updateRibbon();
+}
+function tickTravel(){
+  if(!G||G.screen!=='travel'||G.paused||G.modal||G.codexOpen)return;
+  const e=G.edge, sp=speedInfo(); const before=G.kos;
+  G.kos=Math.min(e.kos,G.kos+sp.kos); G.wx=weather();
+  load('lre_graves',[]).filter(g=>g.edge===G.node+'-'+e.to && g.kos>before && g.kos<=G.kos).slice(-1).forEach(g=>note('🪦','A grave by the road','Beside the road you find a pile of stones. Here lies <b>'+g.name+'</b>, a '+g.merchant+', who died of '+g.cause+' in '+g.month+'.'+(g.epitaph?' Someone has scratched words on a stone: <i>"'+g.epitaph+'"</i>':'')));
+  const left=Math.max(0,e.kos-G.kos);
+  dailyTick('travel','Traveled '+sp.kos+' kos'+(sp.reasons.length?' (slowed by '+sp.reasons.join(', ')+')':'')+'. '+(left>0?Math.ceil(left)+' kos to '+STOPS[e.to].name+'.':STOPS[e.to].name+' is in sight.'));
+  if(chance(.3)) L(pick(e.flavor));
+  updateTravel();
+  flushNotes(()=>{
+    if(G.over){ stopTimer(); endGame('dead'); return; }
+    if(G.kos>=e.kos){ stopTimer(); arrive(e.to); return; }
+    if(G.segEvents<2 && chance(e.risk)){ G.segEvents++; showEvent(makeEvent(e)); }
+  });
+}
+
+/* ---------- road events ---------- */
+function makeEvent(e){
+  const w=e.w; let r=Math.random()*Object.keys(w).reduce((a,k)=>a+w[k],0), kind='trader';
+  for(const k of Object.keys(w)){ r-=w[k]; if(r<=0){kind=k;break;} }
+  if(kind==='sick' && alive().every(p=>p.sick)) kind='trader';
+  return {bandits:evBandits,wolves:evWolves,sick:evSick,trader:evTrader,water:evWater,trade:evTrade}[kind]();
+}
+function evBandits(){
+  const gs=guard(), pw=clamp(.28+gs*.1+alive().length*.02,.15,.85);
+  return {icon:'🗡️',title:'Bandits!',card:'road_bandit',
+   text:'A gang of riders blocks the road. They carry swords and bows. One shouts, "Leave your goods, or leave your lives!"',
+   choices:[
+    {label:'Fight them off. Your guards are '+(gs>=4?'strong':gs>=2?'steady':'few')+'.',fn:()=>{
+      if(chance(pw)) return 'Your guards drive the bandits away. Nobody is badly hurt.';
+      const lost=Math.ceil(G.goods*.3); G.goods-=lost; const v=pick(alive()); damage(v,rnd(30,55),'bandits');
+      return 'The fight goes badly. You lose '+lost+' bundles of goods, and '+v.name+(v.alive?' is badly wounded.':' is killed.'); }},
+    {label:'Pay them 50 rupees to let you pass.',dis:G.money<50,fn:()=>{ G.money-=50; return 'The bandits take the coins and ride away. An expensive lesson.'; }},
+    {label:'Hide your goods and push on.',fn:()=>{
+      if(chance(.5)) return 'The bandits search your loads and find only dust and old rope. They give up.';
+      const lost=Math.ceil(G.goods*.5); G.goods-=lost; return 'They find the hidden goods. You lose '+lost+' bundles.'; }}
+   ]};
+}
+function evWolves(){
+  return {icon:'🐺',title:'Wolves at night',card:'road_wolves',
+   text:'At night, wolves circle your camp. Your animals stamp and pull at their ropes.',
+   choices:[
+    {label:'Light big fires and keep watch all night.',fn:()=>{ alive().forEach(p=>{p.hp=Math.max(1,p.hp-4)}); if(chance(.85)) return 'The fires hold the wolves back. Everyone is tired in the morning.'; if(G.animals>0)G.animals--; return 'In spite of the fires, the wolves drag away one of your animals in the dark.'; }},
+    {label:'Trust the dogs and sleep.',fn:()=>{ if(chance(.5)) return 'The dogs bark, the wolves slink off, and you sleep well.'; if(G.animals>0)G.animals--; return 'While you sleep, the wolves kill one of your animals.'; }}
+   ]};
+}
+function evSick(){
+  const p=pick(alive().filter(x=>!x.sick));
+  return {icon:'🤒',title:p.name+' has a fever',card:'road_sick',
+   text:p.name+' shivers and cannot eat. Fever spreads fast on the road.',
+   choices:[
+    {label:'Use a medicine.',dis:G.med<1,fn:()=>{ G.med--; return p.name+' takes the medicine and feels better by morning.'; }},
+    {label:'Rest for 2 days.',fn:()=>{ dailyTick('rest','You rest to let '+p.name+' recover.'); dailyTick('rest'); return 'You rest two days. Food runs down, but the fever breaks.'; }},
+    {label:'Keep going and hope.',fn:()=>{ p.sick=true; p.ill='fever'; L(p.name+' rides on with a fever.'); return p.name+' rides on, weak and burning. The fever stays, and the caravan slows.'; }}
+   ]};
+}
+function evTrader(){
+  return {icon:'🧺',title:'A village by the road',card:'road_village',
+   text:'A farmer waves from a field. "Fresh bread and fodder, traveler! Fair prices!"',
+   choices:[
+    {label:'Buy 20 food (pay 40 rupees).',dis:G.money<40,fn:()=>{ G.money-=40; G.food+=20; return 'You buy warm bread and dried peas.'; }},
+    {label:'Buy 20 fodder (pay 15 rupees).',dis:G.money<15,fn:()=>{ G.money-=15; G.fodder+=20; return 'Your animals will be glad.'; }},
+    {label:'Wave and move on.',fn:()=>'You nod, and the caravan moves on.'}
+   ]};
+}
+function evWater(){
+  return {icon:'💧',title:'Bad water',card:'road_water',
+   text:'The only water nearby is a muddy, slow stream. Animals have trampled the banks. Your party is thirsty.',
+   choices:[
+    {label:'Drink it as it is.',fn:()=>{ if(chance(.45)){ const p=pick(alive()); makeSick(p,'dysentery'); return 'The water tastes of mud. By night, '+p.name+' has terrible cramps.'; } return 'It tastes of mud, but nobody falls ill. You were lucky.'; }},
+    {label:'Boil it first (uses half a day).',fn:()=>{ G.kos=Math.max(0,G.kos-3); return 'You gather wood and boil the water. You lose half a day of travel, but the water is safe.'; }},
+    {label:'Search the hills for a clean spring.',fn:()=>{ G.kos=Math.max(0,G.kos-3); if(chance(.7)) return 'A shepherd points you to a clear spring among the rocks. The water is cold and clean.'; const p=pick(alive()); makeSick(p,'dysentery'); return 'You find nothing and drink from the stream after all. '+p.name+' falls ill.'; }}
+   ]};
+}
+function evTrade(){
+  const give1=Math.max(1,Math.min(2,G.goods)), food=G.m.id==='armenian'?18:12;
+  return {icon:'🤝',title:'A caravan heading west',card:'road_trade',
+   text:'A caravan coming from India stops beside you. Its leader looks at your loads. "We have more food than we need. Trade me '+give1+' bundle'+(give1>1?'s':'')+' of your goods for '+food+' food?"',
+   choices:[
+    {label:'Accept the trade.',dis:G.goods<1,fn:()=>{ G.goods-=give1; G.food+=food; return 'You shake hands. Your party will eat well for a few days.'; }},
+    {label:'Ask him for news of the road instead.',fn:()=>'"Bandits near the Khyber last month," he says. "And at Attock the boatmen charge whatever they like. Keep your purse close."'},
+    {label:'Decline politely.',fn:()=>'He shrugs, wishes you a safe road, and moves on west.'}
+   ]};
+}
+
+/* hunting mini-game */
+const PREY={'🐦':{name:'partridge',meat:2,speed:1},'🐇':{name:'hare',meat:3,speed:1.2},'🐏':{name:'wild sheep',meat:12,speed:.8},'🦌':{name:'deer',meat:15,speed:1}};
+function startHunt(){
+  if(G.modal||G.screen!=='travel')return;
+  G.modal=true; const game=G.edge.game||['🐦'];
+  let arrows=6, meat=0, secs=15, over=false; const got=[];
+  $('#modalHost').innerHTML='<div class="overlay"><section class="panel"><h2>🏹 Hunting</h2><p>Click or tap the animals to shoot. You have 6 arrows and 15 seconds. Hunting takes the whole day. You can carry back up to '+(alive().length*5)+' food.</p><div class="huntfield" id="field"></div><p id="huntStat"></p></section></div>';
+  const field=$('#field'), stat=$('#huntStat');
+  const upd=()=>{ stat.textContent='Arrows: '+arrows+'. Time: '+secs+'s. Meat: '+meat+'.'; };
+  upd();
+  field.addEventListener('click',ev=>{
+    if(over||arrows<=0)return; arrows--;
+    const t=ev.target.closest('.prey');
+    if(t&&!t.dataset.hit){ t.dataset.hit='1'; const p=PREY[t.dataset.k]; meat+=p.meat; got.push(p.name); t.textContent='✨'; setTimeout(()=>t.remove(),250); }
+    upd(); if(arrows<=0) finish();
+  });
+  const spawn=setInterval(()=>{
+    if(over)return; const k=pick(game), p=PREY[k];
+    const el=document.createElement('button'); el.type='button'; el.className='prey'; el.dataset.k=k; el.textContent=k; el.setAttribute('aria-label',p.name);
+    const ltr=chance(.5); el.style.top=(8+Math.random()*70)+'%'; if(!ltr) el.style.transform='scaleX(-1)';
+    field.appendChild(el);
+    const dur=(2200+Math.random()*1800)/p.speed, t0=performance.now();
+    const step=now=>{ if(!el.isConnected)return; const f=(now-t0)/dur; if(f>=1||over){ el.remove(); return; } el.style.left=(ltr?-10+f*115:105-f*115)+'%'; requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  },850);
+  const clock=setInterval(()=>{ secs--; upd(); if(secs<=0) finish(); },1000);
+  function finish(){
+    if(over)return; over=true; clearInterval(spawn); clearInterval(clock);
+    const carry=Math.min(meat,alive().length*5); G.food+=carry; give('road_hunt');
+    dailyTick('hunt','You spent the day hunting.');
+    const txt=got.length?'You shot '+got.length+' animal'+(got.length>1?'s':'')+' ('+got.join(', ')+') for '+meat+' food.'+(carry<meat?' You can only carry back '+carry+'.':''):'You came back empty-handed.';
+    $('#modalHost').innerHTML='<div class="overlay"><section class="panel"><h2>🏹 The hunt is over</h2><div class="result">'+txt+'</div><p class="muted"><b>Did you know?</b> '+CARDS.road_hunt.text+'</p>'+
+      B('Continue',()=>{ $('#modalHost').innerHTML=''; G.modal=false; flushNotes(()=>{ if(G.over){ stopTimer(); endGame('dead'); return; } updateTravel(); }); },'primary')+'</section></div>';
+  }
+}
+
+function showEvent(ev){
+  G.modal=true;
+  let h='<div class="overlay"><section class="panel"><h2>'+ev.icon+' '+ev.title+'</h2><p>'+ev.text+'</p>';
+  ev.choices.forEach(c=>{ h+=B(c.label,()=>resolveEvent(ev,c.fn()),'',c.dis); });
+  $('#modalHost').innerHTML=h+'</section></div>';
+}
+function resolveEvent(ev,text){
+  give(ev.card);
+  $('#modalHost').innerHTML='<div class="overlay"><section class="panel"><h2>'+ev.icon+' '+ev.title+'</h2><div class="result">'+text+'</div><p class="muted"><b>Did you know?</b> '+CARDS[ev.card].text+'</p>'+
+    B('Continue',()=>{ $('#modalHost').innerHTML=''; G.modal=false; flushNotes(()=>{ if(G.over){ stopTimer(); endGame('dead'); return; } updateTravel(); }); },'primary')+'</section></div>';
+}
+
+/* ---------- codex ---------- */
+function cardBox(id){ const c=CARDS[id]; return '<div class="card"><span class="kind">'+c.kind+'</span><b>'+c.title+'</b><p>'+c.text+'</p></div>'; }
+function openCodex(){
+  const host=$('#codexHost'); if(host.innerHTML){ host.innerHTML=''; if(G)G.codexOpen=false; return; }
+  if(G){ G.codexOpen=true; G.newCards=0; updateCodexBtn(); }
+  const total=Object.keys(CARDS).length, known=G?G.codex.size:0;
+  let h='<div class="overlay"><section class="panel"><h2>📖 Codex</h2><p class="muted">'+known+' of '+total+' entries found. The game is paused while you read. Talk to people, make choices, or hire guides to find more.</p>';
+  ROUTE.concat(['road']).forEach(id=>{
+    h+='<h3>'+(id==='road'?'🛤️ On the road':STOPS[id].icon+' '+STOPS[id].name)+'</h3>';
+    Object.keys(CARDS).filter(k=>CARDS[k].stop===id).forEach(k=>{
+      h+= (G&&G.codex.has(k)) ? cardBox(k) : '<div class="card locked"><span class="kind">'+CARDS[k].kind+'</span>Not found yet</div>';
+    });
+  });
+  host.innerHTML=h+B('Close',()=>{ host.innerHTML=''; if(G)G.codexOpen=false; },'primary')+'</section></div>';
+}
+
+/* ---------- end ---------- */
+const LESSON={
+  hunger:'Caravans planned food and fodder with care. Sarais and villages sold supplies, but running out on a mountain road could be deadly.',
+  sickness:'Crowded sarais and long marches spread disease. Travelers carried medicines and relied on local healers called hakims.',
+  exhaustion:'Pushing too hard wore out people and animals. Caravans moved at an even pace and rested at sarais about every day\'s march.',
+  bandits:'The Mughal empire kept guard posts and sarais along the road because robbery was a constant danger. Big caravans and hired guards were safer.',
+  wolves:'Wild animals were a real danger in the hills. Sarai walls and night fires protected caravans.',
+  fever:'Fevers were the most common killers on the road. Travelers carried medicines such as rhubarb and relied on hakims, healers trained in Unani medicine.',
+  dysentery:'Dirty water spread dysentery, the bloody flux. Sarais were built beside wells and tanks so caravans could find clean water.',
+  drowning:'Great rivers like the Indus were the most dangerous part of the road. That is why the Mughals laid bridges of boats in the dry season and built forts like Attock to control the crossings.',
+  heat:'Before the cool season the plains are fiercely hot. Caravans traveled early in the morning, rested at midday, and Sher Shah planted shade trees along the road.',
+  cold:'Caravans left Kabul in autumn to cross the mountains before winter. Lingering too long meant snow, freezing nights and closed passes.',
+  conflict:'Passes like Khyber were controlled by local clans. Empires paid them allowances rather than fight them. Refusing to pay could be deadly.'
+};
+const SEED_TOP=[
+  {name:'Xuanzang',merchant:'Buddhist pilgrim, about 630',score:3500},{name:'Ibn Battuta',merchant:'Moroccan traveler, 1333',score:3200},
+  {name:'Ralph Fitch',merchant:'English merchant, 1580s',score:2600},{name:'Tavernier',merchant:'French jewel merchant, 1660s',score:2400},
+  {name:'Bernier',merchant:'French doctor, 1660s',score:2100},{name:'Manrique',merchant:'Portuguese friar, 1640',score:1800},
+  {name:'Peter Mundy',merchant:'English merchant, 1630s',score:1500},{name:'Faxian',merchant:'Buddhist pilgrim, about 400',score:1200},
+  {name:'Thomas Coryat',merchant:'English walker, 1615',score:900},{name:'Manucci',merchant:'Venetian runaway, 1650s',score:700}];
+function topHTML(list){ return '<table class="score">'+list.map((x,i)=>'<tr'+(x.mine?' class="tot"':'')+'><td>'+(i+1)+'. '+x.name+' <small class="muted">'+x.merchant+'</small></td><td>'+x.score+'</td></tr>').join('')+'</table>'; }
+function saveGrave(epi){
+  const d=G.deaths.find(x=>x.name===G.party[0].name); if(!d)return;
+  const gs=load('lre_graves',[]); const edge=G.edge?(G.node+'-'+G.edge.to):G.node;
+  gs.push({edge:edge,kos:G.edge?Math.max(1,Math.round(G.kos)):0,name:d.name,merchant:G.m.name.toLowerCase(),cause:CAUSE[d.cause],month:dateText().replace(/^\d+ /,''),epitaph:esc(epi)});
+  store('lre_graves',gs.slice(-8));
+}
+function endGame(kind){
+  stopTimer(); G.screen='end'; reg=[]; G.modal=false; $('#modalHost').innerHTML=''; $('#codexHost').innerHTML=''; G.codexOpen=false;
+  const alivePts=alive().reduce((a,p)=>a+Math.round(p.hp)*3,0);
+  const rows=[['Rupees',Math.round(G.money)],['Goods ('+G.goods+' x '+ONWARD+')',G.goods*ONWARD],['Animals ('+G.animals+' x 25)',G.animals*25],['Party health',alivePts],['Things learned ('+G.codex.size+' x 40)',G.codex.size*40]];
+  const base=rows.reduce((a,r)=>a+r[1],0), total=Math.round(base*G.m.mult);
+  let h='<section class="panel">';
+  if(kind==='win') h+='<h2>🏁 Demo complete</h2><p>You crossed the Indus at Attock on day '+G.day+' with '+alive().length+' of '+G.party.length+' travelers. Next on the road: Rohtas, Lahore, Delhi, Agra, Benares, Patna, Rajmahal and Dhaka.</p>';
+  else { const d=G.deaths.find(x=>x.name===G.over.who)||{}; h+='<h2>💀 The journey ends</h2><p>'+G.over.who+(G.over.who===G.party[0].name?', the leader,':', the last of your caravan,')+' died of '+CAUSE[G.over.cause]+' on day '+G.day+(d.where?', '+d.where:'')+'. Without a leader, the caravan breaks up.</p><div class="card"><span class="kind">What happened</span><p>'+LESSON[G.over.cause]+'</p></div>'; }
+  if(G.deaths.length) h+='<h3>🪦 Lost on the road</h3><ul class="log">'+G.deaths.map(d=>'<li><b>'+d.name+'</b> died of '+CAUSE[d.cause]+' on day '+d.day+', '+d.where+'.</li>').join('')+'</ul>';
+  h+='<table class="score">'+rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>').join('')+'<tr><td>Subtotal</td><td>'+base+'</td></tr><tr><td>'+G.m.name+' multiplier</td><td>x '+G.m.mult+'</td></tr><tr class="tot"><td>Final score</td><td>'+total+'</td></tr></table>';
+  h+='<h3>What you learned</h3>';
+  const known=[...G.codex]; h+= known.length? known.map(cardBox).join('') : '<p>You learned nothing this time. Talk to people and hire guides.</p>';
+  const missed=Object.keys(CARDS).length-known.length;
+  if(missed>0) h+='<p class="muted">'+missed+' more things to discover. Try another merchant or different choices.</p>';
+  const top=load('lre_top',null)||SEED_TOP.slice();
+  const me={name:G.party[0].name,merchant:G.m.name,score:total,mine:true};
+  top.push(me); top.sort((a,b)=>b.score-a.score); const kept=top.slice(0,10);
+  store('lre_top',kept.map(x=>({name:x.name,merchant:x.merchant,score:x.score})));
+  h+='<h3>🏆 Masters of the Road</h3>'+topHTML(kept)+(kept.indexOf(me)<0?'<p class="muted">Your score did not make the top ten.</p>':'');
+  if(kind==='dead'){
+    h+='<h3>🪦 '+G.party[0].name+'\'s grave</h3><p>Write a few words for the grave. The next traveler on this road may find it.</p><label class="field-row"><span>Epitaph</span><input id="epi" maxlength="60" placeholder="Here lies a brave merchant"></label>'+
+      B('Leave the grave and play again',()=>{ const x=document.getElementById('epi'); saveGrave(x?x.value.trim():''); renderTitle(); },'primary');
+  } else h+=B('Play again',()=>renderTitle(),'primary');
+  scr.innerHTML=h+'</section>'; G.newCards=0; updateCodexBtn(); updateHud(); window.scrollTo(0,0);
+}
+
+$('#btnCodex').addEventListener('click',openCodex);
+$('#btnTheme').addEventListener('click',()=>{
+  const r=document.documentElement; const dark=r.dataset.theme?r.dataset.theme==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme=dark?'light':'dark';
+});
+renderTitle();
+})();
+
+</script>
+</body>
+</html>

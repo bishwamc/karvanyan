@@ -1,0 +1,76 @@
+{
+  "summary": {
+    "trials": 6,
+    "fail": 6,
+    "softlocks": 6,
+    "url": "http://localhost:8080/baseline/"
+  },
+  "trials": [
+    {
+      "seed": 1,
+      "modal": "\ud83e\udd12 Hovsep is sick",
+      "focus_escaped": true,
+      "escaped_to": "Steady",
+      "background_changed": false,
+      "softlock": true,
+      "closed": false,
+      "errors": [],
+      "result": "FAIL"
+    },
+    {
+      "seed": 2,
+      "modal": "\ud83d\udde1\ufe0f Bandits!",
+      "focus_escaped": true,
+      "escaped_to": "Steady",
+      "background_changed": false,
+      "softlock": true,
+      "closed": false,
+      "errors": [],
+      "result": "FAIL"
+    },
+    {
+      "seed": 3,
+      "modal": "\ud83e\udd12 Olim is sick",
+      "focus_escaped": true,
+      "escaped_to": "Steady",
+      "background_changed": false,
+      "softlock": true,
+      "closed": false,
+      "errors": [],
+      "result": "FAIL"
+    },
+    {
+      "seed": 4,
+      "modal": "\ud83e\udd1d A caravan heading west",
+      "focus_escaped": true,
+      "escaped_to": "Steady",
+      "background_changed": false,
+      "softlock": true,
+      "closed": false,
+      "errors": [],
+      "result": "FAIL"
+    },
+    {
+      "seed": 5,
+      "modal": "\ud83e\uddfa A village by the road",
+      "focus_escaped": true,
+      "escaped_to": "Steady",
+      "background_changed": false,
+      "softlock": true,
+      "closed": false,
+      "errors": [],
+      "result": "FAIL"
+    },
+    {
+      "seed": 6,
+      "modal": "\ud83e\udd12 Hovsep is sick",
+      "focus_escaped": true,
+      "escaped_to": "Steady",
+      "background_changed": false,
+      "softlock": true,
+      "closed": false,
+      "errors": [],
+      "result": "FAIL"
+    }
+  ]
+}

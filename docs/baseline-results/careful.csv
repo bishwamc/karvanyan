@@ -1,0 +1,101 @@
+policy,seed,merchant,win,day,score,cause,errors,steps
+careful,1,Persian Trader,True,26,3176,,0,64
+careful,2,Armenian Trader,True,20,3100,,0,54
+careful,3,Pashtun Horse Dealer,True,26,4233,,0,64
+careful,4,Uzbek Trader,True,22,3504,,0,57
+careful,5,Yarkandi Trader,True,22,3360,,0,52
+careful,6,Persian Trader,True,25,3204,,0,59
+careful,7,Armenian Trader,True,21,3300,,0,57
+careful,8,Pashtun Horse Dealer,True,23,3764,,0,60
+careful,9,Uzbek Trader,True,20,3924,,0,50
+careful,10,Yarkandi Trader,True,23,3260,,0,55
+careful,11,Persian Trader,True,20,3343,,0,51
+careful,12,Armenian Trader,True,22,3425,,0,57
+careful,13,Pashtun Horse Dealer,True,21,4359,,0,60
+careful,14,Uzbek Trader,True,24,3909,,0,58
+careful,15,Yarkandi Trader,True,21,3430,,0,50
+careful,16,Persian Trader,True,22,3161,,0,58
+careful,17,Armenian Trader,True,20,3400,,0,55
+careful,18,Pashtun Horse Dealer,True,20,4640,,0,53
+careful,19,Uzbek Trader,True,22,3365,,0,61
+careful,20,Yarkandi Trader,True,22,3066,,0,57
+careful,21,Persian Trader,True,21,3013,,0,54
+careful,22,Armenian Trader,True,20,3413,,0,51
+careful,23,Pashtun Horse Dealer,True,25,4101,,0,67
+careful,24,Uzbek Trader,True,20,4011,,0,47
+careful,25,Yarkandi Trader,True,20,3360,,0,51
+careful,26,Persian Trader,True,22,3237,,0,57
+careful,27,Armenian Trader,True,20,3330,,0,51
+careful,28,Pashtun Horse Dealer,True,24,4238,,0,58
+careful,29,Uzbek Trader,True,20,3993,,0,50
+careful,30,Yarkandi Trader,True,28,2832,,0,62
+careful,31,Persian Trader,True,20,3119,,0,51
+careful,32,Armenian Trader,True,20,3550,,0,50
+careful,33,Pashtun Horse Dealer,True,20,4475,,0,55
+careful,34,Uzbek Trader,True,20,3923,,0,51
+careful,35,Yarkandi Trader,True,22,3160,,0,52
+careful,36,Persian Trader,True,20,3250,,0,52
+careful,37,Armenian Trader,True,20,3409,,0,52
+careful,38,Pashtun Horse Dealer,True,20,3815,,0,57
+careful,39,Uzbek Trader,True,20,3675,,0,57
+careful,40,Yarkandi Trader,True,24,2684,,0,61
+careful,41,Persian Trader,True,20,2833,,0,52
+careful,42,Armenian Trader,True,21,3349,,0,56
+careful,43,Pashtun Horse Dealer,True,20,4530,,0,51
+careful,44,Uzbek Trader,True,22,3983,,0,55
+careful,45,Yarkandi Trader,True,21,3590,,0,49
+careful,46,Persian Trader,True,22,3299,,0,55
+careful,47,Armenian Trader,True,24,3314,,0,59
+careful,48,Pashtun Horse Dealer,True,21,4220,,0,57
+careful,49,Uzbek Trader,True,24,3924,,0,56
+careful,50,Yarkandi Trader,True,24,3540,,0,56
+careful,51,Persian Trader,True,22,3193,,0,54
+careful,52,Armenian Trader,True,26,3375,,0,61
+careful,53,Pashtun Horse Dealer,True,25,4404,,0,64
+careful,54,Uzbek Trader,True,20,4041,,0,52
+careful,55,Yarkandi Trader,True,20,3360,,0,54
+careful,56,Persian Trader,True,21,3189,,0,58
+careful,57,Armenian Trader,True,21,3509,,0,53
+careful,58,Pashtun Horse Dealer,True,31,4188,,0,67
+careful,59,Uzbek Trader,True,24,3848,,0,59
+careful,60,Yarkandi Trader,True,20,3120,,0,50
+careful,61,Persian Trader,True,22,2993,,0,59
+careful,62,Armenian Trader,True,26,3100,,0,60
+careful,63,Pashtun Horse Dealer,True,21,4580,,0,55
+careful,64,Uzbek Trader,True,21,3885,,0,57
+careful,65,Yarkandi Trader,True,24,3244,,0,53
+careful,66,Persian Trader,True,26,2844,,0,64
+careful,67,Armenian Trader,True,26,3284,,0,61
+careful,68,Pashtun Horse Dealer,True,24,4544,,0,62
+careful,69,Uzbek Trader,True,22,3885,,0,56
+careful,70,Yarkandi Trader,True,21,3400,,0,54
+careful,71,Persian Trader,True,24,3177,,0,60
+careful,72,Armenian Trader,True,22,3335,,0,57
+careful,73,Pashtun Horse Dealer,True,24,4463,,0,55
+careful,74,Uzbek Trader,True,26,3459,,0,61
+careful,75,Yarkandi Trader,True,24,3348,,0,61
+careful,76,Persian Trader,True,22,3137,,0,59
+careful,77,Armenian Trader,True,23,3455,,0,53
+careful,78,Pashtun Horse Dealer,True,23,4314,,0,55
+careful,79,Uzbek Trader,True,20,4023,,0,57
+careful,80,Yarkandi Trader,True,24,3248,,0,57
+careful,81,Persian Trader,True,26,3077,,0,66
+careful,82,Armenian Trader,True,20,3388,,0,50
+careful,83,Pashtun Horse Dealer,True,23,4170,,0,61
+careful,84,Uzbek Trader,True,20,3614,,0,49
+careful,85,Yarkandi Trader,True,20,2802,,0,52
+careful,86,Persian Trader,True,21,3373,,0,52
+careful,87,Armenian Trader,True,24,3329,,0,53
+careful,88,Pashtun Horse Dealer,True,22,4100,,0,55
+careful,89,Uzbek Trader,True,24,3854,,0,63
+careful,90,Yarkandi Trader,True,21,3560,,0,47
+careful,91,Persian Trader,True,24,3231,,0,58
+careful,92,Armenian Trader,True,23,3154,,0,58
+careful,93,Pashtun Horse Dealer,True,21,4637,,0,51
+careful,94,Uzbek Trader,True,21,3690,,0,56
+careful,95,Yarkandi Trader,True,20,3600,,0,51
+careful,96,Persian Trader,True,20,3253,,0,52
+careful,97,Armenian Trader,True,20,3125,,0,55
+careful,98,Pashtun Horse Dealer,True,21,4100,,0,54
+careful,99,Uzbek Trader,True,28,3588,,0,61
+careful,100,Yarkandi Trader,True,20,3480,,0,53

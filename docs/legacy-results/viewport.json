@@ -1,0 +1,157 @@
+[
+  {
+    "viewport": "320x640",
+    "screen": "title",
+    "result": "PASS",
+    "innerWidth": 320,
+    "scrollWidth": 320,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 640
+  },
+  {
+    "viewport": "320x640",
+    "screen": "stop",
+    "result": "PASS",
+    "innerWidth": 320,
+    "scrollWidth": 320,
+    "clipped": [],
+    "setoutTop": 2583,
+    "innerHeight": 640,
+    "setout_screens_down": 4.04
+  },
+  {
+    "viewport": "320x640",
+    "screen": "travel",
+    "result": "PASS",
+    "innerWidth": 320,
+    "scrollWidth": 320,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 640
+  },
+  {
+    "viewport": "360x740",
+    "screen": "title",
+    "result": "PASS",
+    "innerWidth": 360,
+    "scrollWidth": 360,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 740
+  },
+  {
+    "viewport": "360x740",
+    "screen": "stop",
+    "result": "PASS",
+    "innerWidth": 360,
+    "scrollWidth": 360,
+    "clipped": [],
+    "setoutTop": 2300,
+    "innerHeight": 740,
+    "setout_screens_down": 3.11
+  },
+  {
+    "viewport": "360x740",
+    "screen": "travel",
+    "result": "PASS",
+    "innerWidth": 360,
+    "scrollWidth": 360,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 740
+  },
+  {
+    "viewport": "390x780",
+    "screen": "title",
+    "result": "PASS",
+    "innerWidth": 390,
+    "scrollWidth": 390,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 780
+  },
+  {
+    "viewport": "390x780",
+    "screen": "stop",
+    "result": "PASS",
+    "innerWidth": 390,
+    "scrollWidth": 390,
+    "clipped": [],
+    "setoutTop": 2188,
+    "innerHeight": 780,
+    "setout_screens_down": 2.81
+  },
+  {
+    "viewport": "390x780",
+    "screen": "travel",
+    "result": "PASS",
+    "innerWidth": 390,
+    "scrollWidth": 390,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 780
+  },
+  {
+    "viewport": "768x1024",
+    "screen": "title",
+    "result": "PASS",
+    "innerWidth": 768,
+    "scrollWidth": 768,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 1024
+  },
+  {
+    "viewport": "768x1024",
+    "screen": "stop",
+    "result": "PASS",
+    "innerWidth": 768,
+    "scrollWidth": 768,
+    "clipped": [],
+    "setoutTop": 1788,
+    "innerHeight": 1024,
+    "setout_screens_down": 1.75
+  },
+  {
+    "viewport": "768x1024",
+    "screen": "travel",
+    "result": "PASS",
+    "innerWidth": 768,
+    "scrollWidth": 768,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 1024
+  },
+  {
+    "viewport": "667x375",
+    "screen": "title",
+    "result": "PASS",
+    "innerWidth": 667,
+    "scrollWidth": 667,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 375
+  },
+  {
+    "viewport": "667x375",
+    "screen": "stop",
+    "result": "PASS",
+    "innerWidth": 667,
+    "scrollWidth": 667,
+    "clipped": [],
+    "setoutTop": 1815,
+    "innerHeight": 375,
+    "setout_screens_down": 4.84
+  },
+  {
+    "viewport": "667x375",
+    "screen": "travel",
+    "result": "PASS",
+    "innerWidth": 667,
+    "scrollWidth": 667,
+    "clipped": [],
+    "setoutTop": null,
+    "innerHeight": 375
+  }
+]
