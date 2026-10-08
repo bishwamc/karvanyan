@@ -30,16 +30,25 @@ function ratio(first, second) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-const themes = { dark: readTokens(':root {'), light: readTokens(':root[data-theme="light"] {') };
+const themes = { light: readTokens(':root {'), dark: readTokens(':root[data-theme="dark"] {') };
+
+// The dark tokens are written twice in the CSS (OS preference and manual choice). They must match.
+const darkFromMediaQuery = readTokens('@media (prefers-color-scheme: dark)');
+let failures = 0;
+Object.keys(themes.dark).forEach((name) => {
+  if (darkFromMediaQuery[name] !== themes.dark[name]) {
+    failures += 1;
+    console.log(`FAIL dark token --${name} differs: data-theme ${themes.dark[name]} vs media query ${darkFromMediaQuery[name]}`);
+  }
+});
 const checks = [
   ['text', 'background', 4.5], ['text', 'surface', 4.5], ['text', 'surface-raised', 4.5],
   ['text-muted', 'surface', 4.5], ['text-muted', 'surface-raised', 4.5], ['text-muted', 'background', 4.5],
   ['on-primary', 'primary', 4.5], ['on-danger', 'danger', 4.5],
   ['primary', 'surface', 4.5], ['danger', 'surface', 4.5], ['warning', 'surface', 4.5], ['safe', 'surface', 3],
-  ['border', 'surface', 3], ['border', 'background', 3], ['focus', 'background', 3], ['focus', 'surface', 3],
+  ['rule', 'surface', 4.5], ['rule', 'background', 4.5], ['border', 'surface', 3], ['border', 'background', 3], ['focus', 'background', 3], ['focus', 'surface', 3],
 ];
 
-let failures = 0;
 Object.entries(themes).forEach(([themeName, tokens]) => {
   console.log(`\n${themeName} theme`);
   checks.forEach(([foreground, background, minimum]) => {

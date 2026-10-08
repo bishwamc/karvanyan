@@ -10,7 +10,7 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '0.2.0';
+  const GAME_VERSION = '2.5.0';
   const SAVE_SCHEMA_VERSION = 2;
 
   const STORAGE_KEYS = Object.freeze({
@@ -23,7 +23,8 @@
     MAX_LOG_ENTRIES: 80, MAX_PARTY_SIZE: 4, MAX_ANIMALS: 24, MAX_AMOUNT: 99999, MAX_DAYS: 1200,
   });
 
-  const CANVAS = Object.freeze({ LOGICAL_WIDTH: 320, LOGICAL_HEIGHT: 180 });
+  // Pictures are drawn in 320x180 logical units; RENDER_SCALE gives the canvas more real pixels so lines stay crisp.
+  const CANVAS = Object.freeze({ LOGICAL_WIDTH: 320, LOGICAL_HEIGHT: 180, RENDER_SCALE: 2 });
 
   const CALENDAR = Object.freeze({
     JOURNEY_YEAR: 1665,

@@ -132,39 +132,66 @@
       }
     }
 
+    /** Paints one target. Hit areas come from the logic above and do not depend on how a target looks. */
     function paintTarget(ctx, target) {
-      const palette = UI().PALETTE;
-      const rect = UI().fillRectangle;
+      const ui = UI();
+      const palette = ui.PALETTE;
       if (skin === 'hunt') {
         ctx.globalAlpha = target.alpha;
+        const facing = target.direction > 0 ? 1 : -1;
         const x = target.x - 8; const y = target.y - 6;
-        rect(ctx, palette.camel, x, y, 16, 8); rect(ctx, palette.camelDark, x + 2, y + 8, 2, 6); rect(ctx, palette.camelDark, x + 12, y + 8, 2, 6);
-        rect(ctx, palette.camel, target.direction > 0 ? x + 14 : x - 4, y - 4, 6, 6);
+        ui.drawBlock(ctx, palette.camelDark, x + 2, y + 8, 2, 6);
+        ui.drawBlock(ctx, palette.camelDark, x + 12, y + 8, 2, 6);
+        ui.drawBlock(ctx, '#c9955a', x, y, 16, 8);
+        ui.drawBlock(ctx, '#c9955a', facing > 0 ? x + 14 : x - 4, y - 4, 6, 6);
+        const hornX = facing > 0 ? x + 18 : x - 2;
+        ctx.strokeStyle = palette.ink; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(hornX, y - 4); ctx.lineTo(hornX + facing, y - 8); ctx.stroke();
         ctx.globalAlpha = 1;
       } else if (skin === 'fish') {
         const ring = ringProgress(target);
-        rect(ctx, 'rgba(10,30,50,0.65)', target.x - 9, target.y - 4, 18, 8);
-        rect(ctx, 'rgba(10,30,50,0.65)', target.x + (target.vx > 0 ? -13 : 9), target.y - 3, 4, 6);
-        ctx.strokeStyle = ring >= 0.7 && ring <= 0.95 ? '#ffe08a' : '#cfe8ff';
-        ctx.lineWidth = ring >= 0.7 && ring <= 0.95 ? 2 : 1;
+        const isGoodMoment = ring >= 0.7 && ring <= 0.95;
+        ui.drawEllipse(ctx, 'rgba(12, 32, 56, 0.7)', target.x, target.y, 9, 4, false);
+        const tailX = target.x + (target.vx > 0 ? -11 : 11);
+        ctx.beginPath(); ctx.moveTo(target.x + (target.vx > 0 ? -7 : 7), target.y); ctx.lineTo(tailX, target.y - 4); ctx.lineTo(tailX, target.y + 4); ctx.closePath();
+        ctx.fillStyle = 'rgba(12, 32, 56, 0.7)'; ctx.fill();
+        ctx.strokeStyle = isGoodMoment ? palette.gold : '#dcebf2';
+        ctx.lineWidth = isGoodMoment ? 2 : 1;
         ctx.beginPath(); ctx.arc(target.x, target.y, 4 + (1 - ring) * 22, 0, Math.PI * 2); ctx.stroke();
       } else if (!target.isGone) {
-        const colors = { fruit: '#d6453d', root: '#a8764a', grass: '#8fd14f', herb: '#3b8a4a', decoy: '#6b3f8a' };
-        rect(ctx, colors[target.kind], target.x - 6, target.y - 6, 12, 12);
-        if (target.kind === 'decoy') { rect(ctx, '#e8d8ff', target.x - 3, target.y - 3, 2, 2); rect(ctx, '#e8d8ff', target.x + 2, target.y + 1, 2, 2); }
-        if (target.kind === 'grass') rect(ctx, '#d6f2a0', target.x - 2, target.y - 9, 2, 4);
+        const x = target.x; const y = target.y;
+        if (target.kind === 'fruit') { ui.drawDisc(ctx, palette.cinnabar, x, y + 1, 5.5); ui.fillRectangle(ctx, palette.leaf, x - 1, y - 6, 3, 3); }
+        else if (target.kind === 'root') ui.drawEllipse(ctx, '#b07a45', x, y, 6, 4);
+        else if (target.kind === 'grass') {
+          [-3, 0, 3].forEach((offset) => { ctx.beginPath(); ctx.moveTo(x + offset, y + 5); ctx.lineTo(x + offset * 1.6, y - 6); ctx.strokeStyle = palette.ink; ctx.lineWidth = 3; ctx.stroke(); ctx.strokeStyle = '#f0dfa0'; ctx.lineWidth = 1.6; ctx.stroke(); });
+        } else if (target.kind === 'herb') ui.drawDisc(ctx, palette.leaf, x, y, 6);
+        else { ui.drawDisc(ctx, '#5b3a5e', x, y, 6); ui.fillRectangle(ctx, '#f1e6cf', x - 3, y - 3, 2, 2); ui.fillRectangle(ctx, '#f1e6cf', x + 2, y + 1, 2, 2); }
       }
     }
 
     function paint() {
       UI().withContext(options.canvas, (ctx) => {
-        const rect = UI().fillRectangle;
-        if (skin === 'fish') { rect(ctx, '#3a7fb0', 0, 0, width, height); rect(ctx, '#2c6a99', 0, 80, width, height - 80); }
-        else { rect(ctx, '#e0a45a', 0, 0, width, 70); rect(ctx, skin === 'forage' ? '#7aa84a' : '#8fae55', 0, 70, width, height - 70); }
+        const ui = UI();
+        const rect = ui.fillRectangle;
+        const palette = ui.PALETTE;
+        if (skin === 'fish') {
+          rect(ctx, '#2f6c9a', 0, 0, width, height);
+          rect(ctx, '#255a84', 0, 80, width, height - 80);
+          for (let ripple = 0; ripple < 9; ripple += 1) rect(ctx, 'rgba(223, 235, 245, 0.5)', 10 + ripple * 36, 20 + (ripple % 3) * 44, 14, 1);
+        } else {
+          rect(ctx, '#a9c9d6', 0, 0, width, 70);
+          ui.drawEllipse(ctx, palette.farMountain, 70, 72, 80, 18);
+          ui.drawEllipse(ctx, palette.nearMountain, 250, 72, 90, 13);
+          rect(ctx, skin === 'forage' ? palette.groundGreen : '#9db864', 0, 70, width, height - 70);
+          rect(ctx, palette.ink, 0, 70, width, 1);
+        }
         targets.forEach((target) => paintTarget(ctx, target));
-        if (flash) rect(ctx, '#ffffff', flash.x - 10, flash.y - 10, 20, 20);
-        if (isFoggy) rect(ctx, 'rgba(230,232,236,0.5)', 0, 0, width, height);
-        if (crosshair.isVisible) { rect(ctx, '#140f1e', crosshair.x - 9, crosshair.y - 1, 18, 3); rect(ctx, '#140f1e', crosshair.x - 1, crosshair.y - 9, 3, 18); rect(ctx, '#f2b84b', crosshair.x - 7, crosshair.y, 14, 1); rect(ctx, '#f2b84b', crosshair.x, crosshair.y - 7, 1, 14); }
+        if (flash) ui.drawDisc(ctx, '#fbf4e4', flash.x, flash.y, 10);
+        if (isFoggy) rect(ctx, 'rgba(235, 230, 215, 0.5)', 0, 0, width, height);
+        if (crosshair.isVisible) {
+          rect(ctx, palette.ink, crosshair.x - 9, crosshair.y - 1, 18, 3); rect(ctx, palette.ink, crosshair.x - 1, crosshair.y - 9, 3, 18);
+          rect(ctx, '#f8f0dd', crosshair.x - 7, crosshair.y, 14, 1); rect(ctx, '#f8f0dd', crosshair.x, crosshair.y - 7, 1, 14);
+        }
       });
     }
 

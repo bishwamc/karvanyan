@@ -99,11 +99,15 @@
     ]);
   }
 
-  function createChip(iconText, labelText, valueText, testId) {
+  /**
+   * One ledger column: small label, big value, optional sub-line (e.g. days of supply left).
+   * Text only, no emoji: emoji look different on every phone and cannot be styled.
+   */
+  function createChip(labelText, valueText, testId, subText, isSubWarning) {
     return createElement('div', { className: 'chip', dataset: { testid: testId } }, [
-      createElement('span', { className: 'chip__icon', text: iconText, 'aria-hidden': 'true' }),
       createElement('span', { className: 'chip__label', text: labelText }),
       createElement('span', { className: 'chip__value', text: valueText }),
+      subText ? createElement('span', { className: `chip__sub ${isSubWarning ? 'chip__sub--warning' : ''}`.trim(), text: subText }) : null,
     ]);
   }
 
@@ -196,7 +200,7 @@
     const entry = { backdropElement, dialogElement, previouslyFocused, isDismissible: options.isDismissible };
 
     function setContent(build, title, icon) {
-      titleElement.textContent = `${icon ? `${icon} ` : ''}${title || options.title}`;
+      titleElement.textContent = title || options.title;
       bodyElement.replaceChildren();
       build(bodyElement);
       const firstControl = dialogElement.querySelector(FOCUSABLE_SELECTOR);
@@ -342,60 +346,144 @@
   // Canvas painters
   // ---------------------------------------------------------------------------
 
+  /*
+   * Miniature style: flat colour, a thin ink outline on every shape, raised horizons,
+   * stylised rocks and trees. No gradients, no text inside the pictures.
+   * Key names are shared with game.js (minigame), so change values here, never key names.
+   */
   const PALETTE = Object.freeze({
-    skyTop: '#2b1b4d', skyMiddle: '#7a3b6e', skyLow: '#e0894f', skyGlow: '#ffd27a',
-    skyWinterTop: '#1d2a4a', skyWinterLow: '#9fb4d0', skyRain: '#4b5c78', skyFog: '#b9bcc4',
-    farMountain: '#4a3566', nearMountain: '#352649', snow: '#f4f1ff',
-    ground: '#b88a4a', groundGreen: '#7a9a4a', groundDark: '#8d6633', road: '#d8b878', roadDark: '#a27c3f',
-    camel: '#7a4a24', camelDark: '#53301a', person: '#f4ead2', water: '#3a7fb0', waterLight: '#7cc3e8',
-    stone: '#8c7b6a', stoneDark: '#5e5144', leaf: '#3b8a4a', gold: '#f2b84b', ink: '#140f1e',
+    skyTop: '#2f5d8c', skyMiddle: '#6e9bbe', skyLow: '#e3c47a', skyGlow: '#f3dfa0',
+    skyWinterTop: '#3a4f73', skyWinterLow: '#c9d3e0', skyRain: '#6c7c8f', skyFog: '#d8d3c4',
+    farMountain: '#c9845a', nearMountain: '#9a5b3a', snow: '#f7f1e1',
+    ground: '#d9b26c', groundGreen: '#7fa356', groundDark: '#a9803f', road: '#f0dfb0', roadDark: '#c7a765',
+    camel: '#b88245', camelDark: '#6e4220', person: '#f1e6cf', water: '#2f6c9a', waterLight: '#bfddeb',
+    stone: '#d8b98a', stoneDark: '#a67c4f', leaf: '#3f7d4a', gold: '#d9a441', ink: '#2a2118',
+    cinnabar: '#a63a24', lapis: '#1f3a5f', malachite: '#3b8a5a',
   });
+  const INK_LINE_WIDTH = 0.7;
+  const TRAVELLER_COATS = Object.freeze([PALETTE.lapis, PALETTE.cinnabar, PALETTE.malachite]);
+  const ANIMAL_COATS = Object.freeze({ camel: PALETTE.camel, horse: '#6b3f26', mule: '#8a6a4a', donkey: '#9c968a', ox: '#d9cba8' });
 
   function fillRectangle(ctx, color, x, y, width, height) {
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
   }
 
-  /** Four sky bands. Weather changes the palette, not the shape. */
+  const roundToHalf = (value) => Math.round(value * 2) / 2;
+
+  /** A flat-colour rectangle with a thin ink outline: the basic stroke of the miniature style. */
+  function drawBlock(ctx, color, x, y, width, height) {
+    const left = roundToHalf(x);
+    const top = roundToHalf(y);
+    const blockWidth = roundToHalf(width);
+    const blockHeight = roundToHalf(height);
+    ctx.fillStyle = color;
+    ctx.fillRect(left, top, blockWidth, blockHeight);
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = INK_LINE_WIDTH;
+    ctx.strokeRect(left + 0.35, top + 0.35, Math.max(0, blockWidth - 0.7), Math.max(0, blockHeight - 0.7));
+  }
+
+  function drawEllipse(ctx, color, centreX, centreY, radiusX, radiusY, hasOutline) {
+    ctx.beginPath();
+    ctx.ellipse(centreX, centreY, radiusX, radiusY, 0, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (hasOutline === false) return;
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = INK_LINE_WIDTH;
+    ctx.stroke();
+  }
+
+  const drawDisc = (ctx, color, centreX, centreY, radius) => drawEllipse(ctx, color, centreX, centreY, radius, radius, true);
+
+  /** Half-disc dome with a finial: the signature shape of a Persianate skyline. */
+  function drawDome(ctx, color, centreX, baseY, radius) {
+    ctx.beginPath();
+    ctx.arc(centreX, baseY, radius, Math.PI, 0);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = INK_LINE_WIDTH;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(centreX, baseY - radius);
+    ctx.lineTo(centreX, baseY - radius - 3);
+    ctx.stroke();
+  }
+
+  /** Flat sky bands. Weather changes the palette, not the shape. */
   function paintSky(ctx, weatherKey) {
     const width = Config.CANVAS.LOGICAL_WIDTH;
     let bands = [PALETTE.skyTop, PALETTE.skyMiddle, PALETTE.skyLow, PALETTE.skyGlow];
-    if (['cold', 'snow'].includes(weatherKey)) bands = [PALETTE.skyWinterTop, '#34456b', '#5a6f94', PALETTE.skyWinterLow];
-    else if (['rain', 'monsoon'].includes(weatherKey)) bands = ['#2f3b52', '#3f4f6b', PALETTE.skyRain, '#7d8aa0'];
-    else if (weatherKey === 'fog') bands = ['#9ea3ad', '#aeb2ba', '#b9bcc4', '#c7c9cf'];
-    else if (['hot', 'extreme', 'dust'].includes(weatherKey)) bands = ['#6a3d5a', '#b3574a', '#e0894f', '#ffe08a'];
+    if (['cold', 'snow'].includes(weatherKey)) bands = [PALETTE.skyWinterTop, '#5b6f94', '#9fb0c8', PALETTE.skyWinterLow];
+    else if (['rain', 'monsoon'].includes(weatherKey)) bands = ['#44546b', '#5a6b82', PALETTE.skyRain, '#9aa6b5'];
+    else if (weatherKey === 'fog') bands = ['#bdbbb0', '#c9c6b8', '#d3d0c2', PALETTE.skyFog];
+    else if (['hot', 'extreme', 'dust'].includes(weatherKey)) bands = ['#7a4f6b', '#c4694f', '#e8a15f', '#f6d88a'];
     bands.forEach((color, index) => fillRectangle(ctx, color, 0, index * 30, width, 32));
+    if (!['rain', 'monsoon', 'fog'].includes(weatherKey)) {
+      drawEllipse(ctx, 'rgba(248,240,221,0.92)', 52, 36, 20, 5);
+      drawEllipse(ctx, 'rgba(248,240,221,0.92)', 196, 54, 24, 5);
+    }
   }
 
+  /** A raised, stylised mountain ridge: filled polygon, ink outline, optional snow cap. */
   function paintMountainRidge(ctx, color, baseY, amplitude, scrollOffset, wavelength, snowColor) {
     const width = Config.CANVAS.LOGICAL_WIDTH;
-    for (let x = 0; x < width; x += 2) {
+    const step = 4;
+    const points = [];
+    for (let x = -step; x <= width + step; x += step) {
       const position = (x + scrollOffset) / wavelength;
-      const height = amplitude * (0.55 + 0.3 * Math.sin(position) + 0.15 * Math.sin(position * 2.7 + 1));
-      fillRectangle(ctx, color, x, baseY - height, 2, height + 2);
-      if (snowColor && height > amplitude * 0.8) fillRectangle(ctx, snowColor, x, baseY - height, 2, 3);
+      points.push({ x, top: baseY - amplitude * (0.55 + 0.3 * Math.sin(position) + 0.15 * Math.sin(position * 2.7 + 1)) });
     }
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, baseY + 2);
+    points.forEach((point) => ctx.lineTo(point.x, point.top));
+    ctx.lineTo(points[points.length - 1].x, baseY + 2);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (snowColor) {
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        const isHigh = baseY - point.top > amplitude * 0.8;
+        if (isHigh && index > 0 && baseY - points[index - 1].top > amplitude * 0.8) { ctx.moveTo(points[index - 1].x, points[index - 1].top + 1.5); ctx.lineTo(point.x, point.top + 1.5); }
+      });
+      ctx.strokeStyle = snowColor;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    points.forEach((point, index) => (index === 0 ? ctx.moveTo(point.x, point.top) : ctx.lineTo(point.x, point.top)));
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   function paintAnimal(ctx, x, y, stepFrame, type) {
     const legShift = stepFrame ? 1 : -1;
     const isCamel = type === 'camel';
-    const body = type === 'horse' ? '#5a3a24' : PALETTE.camel;
-    fillRectangle(ctx, PALETTE.camelDark, x + 2, y + 10, 2, 7 + legShift);
-    fillRectangle(ctx, PALETTE.camelDark, x + 5, y + 10, 2, 7 - legShift);
-    fillRectangle(ctx, PALETTE.camelDark, x + 12, y + 10, 2, 7 - legShift);
-    fillRectangle(ctx, PALETTE.camelDark, x + 15, y + 10, 2, 7 + legShift);
-    fillRectangle(ctx, body, x, y + 4, 18, 7);
-    if (isCamel) { fillRectangle(ctx, body, x + 5, y, 4, 5); fillRectangle(ctx, body, x + 12, y + 1, 4, 4); }
-    fillRectangle(ctx, body, x + 17, y - (isCamel ? 4 : 1), 3, isCamel ? 9 : 6);
-    fillRectangle(ctx, body, x + 18, y - (isCamel ? 6 : 3), 5, 3);
+    const body = ANIMAL_COATS[type] || PALETTE.camel;
+    drawBlock(ctx, PALETTE.camelDark, x + 2, y + 10, 2.5, 7 + legShift);
+    drawBlock(ctx, PALETTE.camelDark, x + 5, y + 10, 2.5, 7 - legShift);
+    drawBlock(ctx, PALETTE.camelDark, x + 12, y + 10, 2.5, 7 - legShift);
+    drawBlock(ctx, PALETTE.camelDark, x + 15, y + 10, 2.5, 7 + legShift);
+    drawBlock(ctx, body, x, y + 4, 18, 7);
+    if (isCamel) { drawBlock(ctx, body, x + 5, y, 4, 5); drawBlock(ctx, body, x + 12, y + 1, 4, 4); }
+    drawBlock(ctx, body, x + 17, y - (isCamel ? 4 : 1), 3, isCamel ? 9 : 6);
+    drawBlock(ctx, body, x + 18, y - (isCamel ? 6 : 3), 5, 3);
+    // Pack blanket: lapis cloth with a gold stripe, so every animal reads as a baggage animal.
+    drawBlock(ctx, PALETTE.lapis, x + 3, y + 3.5, 12, 3.5);
+    fillRectangle(ctx, PALETTE.gold, x + 4, y + 5, 10, 1);
   }
 
   function paintTraveller(ctx, x, y, stepFrame, isIll) {
-    fillRectangle(ctx, isIll ? '#9bd18b' : PALETTE.person, x, y, 3, 4);
-    fillRectangle(ctx, PALETTE.person, x, y + 4, 3, 5);
-    fillRectangle(ctx, PALETTE.camelDark, x, y + 9, 1, 3 + (stepFrame ? 1 : 0));
-    fillRectangle(ctx, PALETTE.camelDark, x + 2, y + 9, 1, 3 + (stepFrame ? 0 : 1));
+    const coat = isIll ? '#9bb78b' : TRAVELLER_COATS[Math.floor(x / 20) % TRAVELLER_COATS.length];
+    drawBlock(ctx, coat, x - 0.5, y + 3, 4.5, 7);
+    drawDisc(ctx, isIll ? '#cfe0b8' : PALETTE.person, x + 1.75, y + 1.5, 2.4);
+    drawBlock(ctx, PALETTE.camelDark, x, y + 10, 1.5, 2.5 + (stepFrame ? 1 : 0));
+    drawBlock(ctx, PALETTE.camelDark, x + 2.5, y + 10, 1.5, 2.5 + (stepFrame ? 0 : 1));
   }
 
   /**
@@ -408,47 +496,62 @@
   function paintRoadScene(ctx, state, timeSeconds, isStill) {
     const width = Config.CANVAS.LOGICAL_WIDTH;
     const height = Config.CANVAS.LOGICAL_HEIGHT;
-    const edge = State.getEdge(state);
     const weatherKey = state.weather.today;
     const walkingTime = isStill ? 0 : timeSeconds;
     const scroll = (state.dayIndex * 18) + walkingTime * 14;
     const region = State.getRegionOfState(state);
     const isGreen = ['plainsN', 'doab', 'plainsE', 'delta'].includes(region.climate);
+    const isCold = ['cold', 'snow'].includes(weatherKey);
 
     paintSky(ctx, weatherKey);
-    if (!['rain', 'monsoon', 'fog'].includes(weatherKey)) fillRectangle(ctx, ['cold', 'snow'].includes(weatherKey) ? '#dfe7f5' : PALETTE.skyGlow, 250, 40, 14, 14);
+    if (!['rain', 'monsoon', 'fog'].includes(weatherKey)) drawDisc(ctx, isCold ? '#eef3fa' : PALETTE.skyGlow, 257, 47, 7);
     if (!isGreen || region.id === 'r11') {
-      paintMountainRidge(ctx, PALETTE.farMountain, 105, region.climate === 'highland' ? 58 : 34, scroll * 0.15, 38, ['cold', 'snow'].includes(weatherKey) || region.climate === 'highland' ? PALETTE.snow : null);
-      paintMountainRidge(ctx, PALETTE.nearMountain, 122, region.climate === 'highland' ? 40 : 22, scroll * 0.35, 24, ['snow'].includes(weatherKey) ? PALETTE.snow : null);
+      paintMountainRidge(ctx, PALETTE.farMountain, 105, region.climate === 'highland' ? 58 : 34, scroll * 0.15, 38, isCold || region.climate === 'highland' ? PALETTE.snow : null);
+      paintMountainRidge(ctx, PALETTE.nearMountain, 122, region.climate === 'highland' ? 40 : 22, scroll * 0.35, 24, weatherKey === 'snow' ? PALETTE.snow : null);
     } else {
-      fillRectangle(ctx, '#5f7a46', 0, 112, width, 12);
-      for (let x = -(Math.round(scroll * 0.3) % 50); x < width; x += 50) { fillRectangle(ctx, PALETTE.leaf, x + 8, 100, 14, 14); fillRectangle(ctx, PALETTE.camelDark, x + 14, 112, 3, 10); }
+      fillRectangle(ctx, '#93b06b', 0, 112, width, 12);
+      fillRectangle(ctx, PALETTE.ink, 0, 112, width, 1);
+      for (let x = -(Math.round(scroll * 0.3) % 50); x < width; x += 50) {
+        drawBlock(ctx, PALETTE.camelDark, x + 13.5, 112, 3, 10);
+        drawEllipse(ctx, PALETTE.leaf, x + 15, 105, 8, 9);
+      }
     }
     fillRectangle(ctx, isGreen ? PALETTE.groundGreen : PALETTE.ground, 0, 122, width, height - 122);
-    fillRectangle(ctx, PALETTE.groundDark, 0, 122, width, 2);
+    fillRectangle(ctx, PALETTE.ink, 0, 122, width, 1);
+    fillRectangle(ctx, PALETTE.groundDark, 0, 123, width, 2);
     fillRectangle(ctx, PALETTE.road, 0, 140, width, 22);
+    fillRectangle(ctx, PALETTE.ink, 0, 140, width, 1);
+    fillRectangle(ctx, PALETTE.ink, 0, 161, width, 1);
     for (let x = -(Math.round(scroll) % 24); x < width; x += 24) fillRectangle(ctx, PALETTE.roadDark, x, 151, 12, 2);
 
     const stepFrame = Math.floor(walkingTime * 4) % 2 === 0;
     state.animals.slice(0, 6).forEach((animal, index) => paintAnimal(ctx, 16 + index * 30, 128 + (index % 2) * 4, stepFrame, animal.type));
     State.getLivingIndices(state).forEach((memberIndex, position) => paintTraveller(ctx, 26 + position * 20, 144 + (position % 2) * 3, stepFrame, Boolean(state.party[memberIndex].illness)));
 
-    if (['snow', 'cold'].includes(weatherKey) && !isStill) for (let flake = 0; flake < 36; flake += 1) fillRectangle(ctx, PALETTE.snow, (flake * 37 + timeSeconds * 20) % width, (flake * 53 + timeSeconds * 45) % height, 2, 2);
-    if (['rain', 'monsoon'].includes(weatherKey)) for (let drop = 0; drop < (weatherKey === 'monsoon' ? 60 : 30); drop += 1) fillRectangle(ctx, 'rgba(200,220,255,0.7)', (drop * 29 + (isStill ? 0 : timeSeconds * 60)) % width, (drop * 47 + (isStill ? 0 : timeSeconds * 120)) % height, 1, 5);
-    if (weatherKey === 'fog') fillRectangle(ctx, 'rgba(230,232,236,0.55)', 0, 70, width, 90);
-    if (['hot', 'extreme'].includes(weatherKey)) for (let line = 0; line < 4; line += 1) fillRectangle(ctx, 'rgba(255,230,160,0.25)', 0, 112 + line * 4 + (isStill ? 0 : Math.round(Math.sin(timeSeconds * 2 + line))), width, 1);
-    if (weatherKey === 'dust') fillRectangle(ctx, 'rgba(210,170,110,0.35)', 0, 90, width, 80);
-
-    if (edge) {
-      fillRectangle(ctx, 'rgba(20,15,30,0.7)', 8, 6, width - 16, 16);
-      fillRectangle(ctx, PALETTE.gold, 10, 16, Math.round((width - 20) * Math.min(1, state.kosOnEdge / edge.kos)), 4);
-      ctx.fillStyle = PALETTE.person;
-      ctx.font = '8px monospace';
-      ctx.fillText(`${World.findNode(edge.from).name} > ${World.findNode(edge.to).name}`, 12, 14);
-    }
+    if (isCold && !isStill) for (let flake = 0; flake < 36; flake += 1) drawDisc(ctx, PALETTE.snow, (flake * 37 + timeSeconds * 20) % width, (flake * 53 + timeSeconds * 45) % height, 1);
+    if (['rain', 'monsoon'].includes(weatherKey)) for (let drop = 0; drop < (weatherKey === 'monsoon' ? 60 : 30); drop += 1) fillRectangle(ctx, 'rgba(223,235,245,0.8)', (drop * 29 + (isStill ? 0 : timeSeconds * 60)) % width, (drop * 47 + (isStill ? 0 : timeSeconds * 120)) % height, 1, 5);
+    if (weatherKey === 'fog') fillRectangle(ctx, 'rgba(235,230,215,0.55)', 0, 70, width, 90);
+    if (['hot', 'extreme'].includes(weatherKey)) for (let line = 0; line < 4; line += 1) fillRectangle(ctx, 'rgba(255,236,170,0.3)', 0, 112 + line * 4 + (isStill ? 0 : Math.round(Math.sin(timeSeconds * 2 + line))), width, 1);
+    if (weatherKey === 'dust') fillRectangle(ctx, 'rgba(214,170,110,0.35)', 0, 90, width, 80);
   }
 
-  /** Stop silhouettes: a handful of shapes chosen per stop. */
+  function paintCrenellations(ctx, x, y, wallWidth) {
+    for (let left = x; left + 8 <= x + wallWidth; left += 12) drawBlock(ctx, PALETTE.stone, left, y, 8, 8);
+  }
+
+  /** A fort: crenellated wall and an arched gate. */
+  function paintFort(ctx, x, y, wallWidth, wallHeight) {
+    paintCrenellations(ctx, x, y - 8, wallWidth);
+    drawBlock(ctx, PALETTE.stoneDark, x, y, wallWidth, wallHeight);
+    const gateX = x + wallWidth / 2 - 8;
+    ctx.fillStyle = PALETTE.ink;
+    ctx.fillRect(gateX, y + wallHeight - 24, 16, 24);
+    ctx.beginPath();
+    ctx.arc(gateX + 8, y + wallHeight - 24, 8, Math.PI, 0);
+    ctx.fill();
+  }
+
+  /** Stop pictures: a handful of shapes chosen per stop. No lettering: the name is in the page heading. */
   function paintStopScene(ctx, nodeId) {
     const width = Config.CANVAS.LOGICAL_WIDTH;
     const height = Config.CANVAS.LOGICAL_HEIGHT;
@@ -458,34 +561,62 @@
     paintSky(ctx, 'clear');
     if (!isGreen) paintMountainRidge(ctx, PALETTE.farMountain, 110, 50, 20, 40, region.climate === 'highland' ? PALETTE.snow : null);
     fillRectangle(ctx, isGreen ? PALETTE.groundGreen : PALETTE.ground, 0, 118, width, height - 118);
-    fillRectangle(ctx, PALETTE.groundDark, 0, 118, width, 2);
+    fillRectangle(ctx, PALETTE.ink, 0, 118, width, 1);
+    fillRectangle(ctx, PALETTE.groundDark, 0, 119, width, 2);
     const riverNodes = ['attock', 'jhelum', 'allahabad', 'varanasi', 'patna', 'munger', 'bhagalpur', 'dhaka', 'agra', 'mathura', 'makhsusabad'];
     if (riverNodes.includes(nodeId)) {
       fillRectangle(ctx, PALETTE.water, 0, 140, width, 40);
+      fillRectangle(ctx, PALETTE.ink, 0, 140, width, 1);
       for (let x = 0; x < width; x += 18) fillRectangle(ctx, PALETTE.waterLight, x, 150 + (x % 3) * 8, 10, 2);
     }
-    if (nodeId === 'kabul') { fillRectangle(ctx, PALETTE.stoneDark, 150, 70, 120, 50); for (let x = 150; x < 270; x += 12) fillRectangle(ctx, PALETTE.stone, x, 64, 8, 8); fillRectangle(ctx, PALETTE.ink, 200, 96, 14, 24); }
-    else if (nodeId === 'khyber') { fillRectangle(ctx, PALETTE.stoneDark, 0, 20, 110, 110); fillRectangle(ctx, PALETTE.stoneDark, 210, 10, 110, 120); fillRectangle(ctx, PALETTE.stone, 100, 40, 12, 90); fillRectangle(ctx, PALETTE.stone, 208, 30, 12, 100); }
-    else if (nodeId === 'jalalabad') { for (let index = 0; index < 5; index += 1) { const x = 40 + index * 58; fillRectangle(ctx, PALETTE.camelDark, x, 84, 4, 38); fillRectangle(ctx, PALETTE.leaf, x - 14, 78, 32, 5); fillRectangle(ctx, PALETTE.leaf, x - 8, 72, 20, 5); } }
-    else if (['rohtas', 'attock', 'munger', 'agra', 'delhi'].includes(nodeId)) { fillRectangle(ctx, PALETTE.stoneDark, 90, 66, 140, 62); for (let x = 90; x < 230; x += 14) fillRectangle(ctx, PALETTE.stone, x, 58, 9, 9); fillRectangle(ctx, PALETTE.ink, 150, 98, 18, 30); }
-    else {
+    if (nodeId === 'kabul') {
+      paintFort(ctx, 150, 70, 120, 50);
+      drawBlock(ctx, PALETTE.stone, 160, 44, 16, 26);
+      drawDome(ctx, PALETTE.lapis, 168, 44, 9);
+    } else if (nodeId === 'khyber') {
+      drawBlock(ctx, PALETTE.stoneDark, 0, 20, 110, 110);
+      drawBlock(ctx, PALETTE.stoneDark, 210, 10, 110, 120);
+      drawBlock(ctx, PALETTE.stone, 100, 40, 12, 90);
+      drawBlock(ctx, PALETTE.stone, 208, 30, 12, 100);
+      drawBlock(ctx, PALETTE.stone, 40, 6, 16, 14);
+    } else if (nodeId === 'jalalabad') {
+      for (let index = 0; index < 5; index += 1) {
+        const x = 40 + index * 58;
+        drawBlock(ctx, PALETTE.camelDark, x, 84, 4, 38);
+        drawEllipse(ctx, PALETTE.leaf, x + 2, 76, 16, 6);
+        drawEllipse(ctx, PALETTE.leaf, x + 2, 69, 10, 5);
+      }
+    } else if (['rohtas', 'attock', 'munger', 'agra', 'delhi'].includes(nodeId)) {
+      paintFort(ctx, 90, 66, 140, 62);
+      if (nodeId === 'agra') { drawBlock(ctx, PALETTE.stone, 232, 40, 18, 28); drawDome(ctx, PALETTE.cinnabar, 241, 40, 9); }
+    } else {
       const towers = node.tier === 'great' ? 5 : (node.tier === 'large' ? 4 : (node.tier === 'medium' ? 3 : 2));
-      fillRectangle(ctx, PALETTE.stoneDark, 40, 92, 240, 28);
-      for (let index = 0; index < towers; index += 1) { const x = 60 + index * (200 / towers); fillRectangle(ctx, PALETTE.stone, x, 56 - (index % 2) * 10, 8, 64); fillRectangle(ctx, PALETTE.gold, x - 2, 50 - (index % 2) * 10, 12, 6); }
+      drawBlock(ctx, PALETTE.stoneDark, 40, 92, 240, 28);
+      // A domed hall in the middle of the skyline; bigger in bigger towns.
+      const hallWidth = 20 + towers * 6;
+      drawBlock(ctx, PALETTE.stone, 160 - hallWidth / 2, 70, hallWidth, 50);
+      drawDome(ctx, PALETTE.lapis, 160, 70, hallWidth / 2);
+      for (let index = 0; index < towers; index += 1) {
+        const x = 60 + index * (200 / towers);
+        const top = 56 - (index % 2) * 10;
+        drawBlock(ctx, PALETTE.stone, x, top, 8, 64);
+        drawDome(ctx, PALETTE.gold, x + 4, top, 6);
+      }
     }
-    ctx.fillStyle = PALETTE.person;
-    ctx.font = '10px monospace';
-    ctx.fillText(node.name.toUpperCase(), 10, 16);
   }
 
   function createSceneCanvas(testId, description) {
-    return createElement('canvas', { className: 'scene-canvas', width: Config.CANVAS.LOGICAL_WIDTH, height: Config.CANVAS.LOGICAL_HEIGHT, role: 'img', 'aria-label': description, dataset: { testid: testId } });
+    const scale = Config.CANVAS.RENDER_SCALE || 1;
+    return createElement('canvas', { className: 'scene-canvas', width: Config.CANVAS.LOGICAL_WIDTH * scale, height: Config.CANVAS.LOGICAL_HEIGHT * scale, role: 'img', 'aria-label': description, dataset: { testid: testId } });
   }
 
+  /** Paints in logical 320x180 units; the canvas holds RENDER_SCALE times more pixels so lines stay crisp. */
   function withContext(canvas, paint) {
     const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
     if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
+    const scale = Config.CANVAS.RENDER_SCALE || 1;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.imageSmoothingEnabled = true;
     paint(ctx);
   }
 
@@ -501,28 +632,33 @@
   // ---------------------------------------------------------------------------
 
   const label = (value) => `${value[0].toUpperCase()}${value.slice(1)}`;
-  const weatherText = (key) => `${Config.WEATHER[key].icon} ${Config.WEATHER[key].label}`;
+  const weatherText = (key) => Config.WEATHER[key].label;
   const rangeText = (range) => (range[0] === range[1] ? String(range[0]) : `${range[0]}-${range[1]}`);
 
   function createHud(state) {
     const capacity = State.getCapacity(state);
     const load = State.getLoad(state);
+    // Days of supply left come from the same function as the action-bar forecast, so they never disagree.
+    const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
+    const forecast = edge ? Engine.computeSupplyForecast(state, edge) : null;
     const essentials = createElement('div', { className: 'hud__row' }, [
-      createChip('💰', 'Rupees', String(Math.floor(state.money)), 'hud-money'),
-      createChip('🍞', 'Rations', String(Math.floor(state.supplies.rations)), 'hud-food'),
-      createChip('🌾', 'Feeds', String(Math.floor(state.supplies.feeds)), 'hud-fodder'),
-      createChip('👥', 'Party', `${State.getLivingCount(state)}/${state.party.length}`, 'hud-party'),
-      createButton({ label: isHudExpanded ? 'Less ▲' : 'More ▼', action: 'toggleHud', testId: 'hud-expand', variant: 'quiet', className: 'hud__toggle', ariaLabel: isHudExpanded ? 'Show fewer supplies' : 'Show more supplies', isPressed: isHudExpanded }),
+      createChip('Rupees', String(Math.floor(state.money)), 'hud-money'),
+      createChip('Rations', String(Math.floor(state.supplies.rations)), 'hud-food', forecast ? `\u2248 ${forecast.rationDays} d` : null, forecast ? forecast.rationDays < forecast.legDays : false),
+      createChip('Feeds', String(Math.floor(state.supplies.feeds)), 'hud-fodder', forecast ? `\u2248 ${forecast.feedDays} d` : null, forecast ? forecast.feedDays < forecast.legDays : false),
+      createChip('Party', `${State.getLivingCount(state)}/${state.party.length}`, 'hud-party'),
     ]);
     const children = [essentials];
     if (isHudExpanded) {
       children.push(createElement('div', { className: 'hud__row hud__row--extra' }, [
-        createChip('📦', 'Cargo', String(state.cargo ? state.cargo.units : 0), 'hud-goods'), createChip('💊', 'Medicine', String(state.supplies.medicine), 'hud-med'),
-        createChip('🐫', 'Animals', String(state.animals.length), 'hud-animals'), createChip('⚖️', 'Load', `${load}/${capacity}`, 'hud-load'),
-        createChip('🛡️', 'Hired', String(state.hired.length), 'hud-guards'), createChip('🗓️', 'Day', String(state.dayIndex), 'hud-day'),
+        createChip('Cargo', String(state.cargo ? state.cargo.units : 0), 'hud-goods'), createChip('Medicine', String(state.supplies.medicine), 'hud-med'),
+        createChip('Animals', String(state.animals.length), 'hud-animals'), createChip('Load', `${load}/${capacity}`, 'hud-load'),
+        createChip('Hired', String(state.hired.length), 'hud-guards'), createChip('Day', String(state.dayIndex), 'hud-day'),
       ]));
     }
-    children.push(createElement('p', { className: `hud__date ${load > capacity ? 'hud__date--warning' : ''}`.trim(), dataset: { testid: 'hud-date' }, text: `${State.formatDate(state)} · ${State.getHijriLabel(state)} · ${weatherText(state.weather.today)}${load > capacity ? ' · OVERLOADED' : ''}` }));
+    children.push(createElement('div', { className: 'hud__meta' }, [
+      createElement('p', { className: `hud__date ${load > capacity ? 'hud__date--warning' : ''}`.trim(), dataset: { testid: 'hud-date' }, text: `${State.formatDate(state)} \u00b7 ${State.getHijriLabel(state)} \u00b7 ${weatherText(state.weather.today)}${load > capacity ? ' \u00b7 OVERLOADED' : ''}` }),
+      createButton({ label: isHudExpanded ? 'Fewer details' : 'More details', action: 'toggleHud', testId: 'hud-expand', variant: 'quiet', className: 'hud__toggle', ariaLabel: isHudExpanded ? 'Show fewer supplies' : 'Show more supplies', isPressed: isHudExpanded }),
+    ]));
     return createElement('header', { className: 'hud' }, children);
   }
 
@@ -560,7 +696,7 @@
   function createForecastWeather(state) {
     const entries = Engine.getForecast(state);
     if (entries.length === 0) return 'No forecast.';
-    return entries.map((entry) => `+${entry.aheadDays}d ${Config.WEATHER[entry.shown].icon} ${Config.WEATHER[entry.shown].label} (${Math.round(entry.accuracy * 100)}%)`).join(' · ');
+    return entries.map((entry) => `+${entry.aheadDays}d ${Config.WEATHER[entry.shown].label} (${Math.round(entry.accuracy * 100)}%)`).join(' · ');
   }
 
   // ---------------------------------------------------------------------------
@@ -574,7 +710,7 @@
     withContext(banner, (ctx) => paintStopScene(ctx, 'kabul'));
     const children = [
       createElement('header', { className: 'title-block' }, [
-        createElement('h1', { className: 'title-block__name', text: 'Kārvānyān of Sadak-e-Azam' }),
+        createElement('h1', { className: 'title-block__name', text: 'Kārvānyān of Sadak\u2011e\u2011Azam' }),
         createElement('p', { className: 'title-block__subtitle', text: 'The Long Road East' }),
         createElement('p', { className: 'title-block__tagline', text: 'Lead a merchant caravan from Kabul to Dhaka, 1665.' }),
       ]), banner,
@@ -760,10 +896,10 @@
     return [
       createPanel(`Next region: ${briefing.name}${briefing.isGuided ? ' (guided: exact)' : ' (ranges)'}`, [
         createElement('ul', { className: 'briefing' }, [
-          createElement('li', { text: `🏠 Sarai: ${briefing.sarai}` }), createElement('li', { text: `🌾 Fodder: ${briefing.fodder}` }),
-          createElement('li', { text: `🏹 Hunt ${rangeText(briefing.hunt)} · 🐟 Fish ${rangeText(briefing.fish)} · 🌿 Forage ${rangeText(briefing.forage)} (0-3)` }),
-          createElement('li', { text: `⚠️ Bandits ${rangeText(briefing.threat.bandit)} · Wildlife ${rangeText(briefing.threat.wildlife)} · Officials ${rangeText(briefing.threat.authority)} · Theft ${rangeText(briefing.threat.theft)} · Disease ${rangeText(briefing.threat.disease)} · Flood ${rangeText(briefing.threat.flood)} (0-5)` }),
-          createElement('li', { text: `🌦️ ${createForecastWeather(state)}` }),
+          createElement('li', { text: `Sarai: ${briefing.sarai}` }), createElement('li', { text: `Fodder: ${briefing.fodder}` }),
+          createElement('li', { text: `Hunt ${rangeText(briefing.hunt)} · Fish ${rangeText(briefing.fish)} · Forage ${rangeText(briefing.forage)} (0-3)` }),
+          createElement('li', { text: `Threats: Bandits ${rangeText(briefing.threat.bandit)} · Wildlife ${rangeText(briefing.threat.wildlife)} · Officials ${rangeText(briefing.threat.authority)} · Theft ${rangeText(briefing.threat.theft)} · Disease ${rangeText(briefing.threat.disease)} · Flood ${rangeText(briefing.threat.flood)} (0-5)` }),
+          createElement('li', { text: `Weather: ${createForecastWeather(state)}` }),
         ]),
       ]),
       createPanel('Rumours', state.rumours.length === 0 ? [createElement('p', { className: 'paragraph', text: 'None yet. Sarais and brokers sell rumours; about 6 in 10 are right.' })] : [createElement('ul', { className: 'record-list' }, state.rumours.slice(-5).reverse().map((rumour) => createElement('li', { text: rumour.text })))]),
@@ -798,7 +934,7 @@
       const forecast = createForecastLine(state, edge);
       actionBar.appendChild(createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }));
       actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [
-        createButton({ label: `Set out ▶ ${World.findNode(edge.to).name} · ${edge.kos} kos`, action: 'setOut', testId: 'action-setout', variant: 'primary' }),
+        createButton({ label: `Set out for ${World.findNode(edge.to).name} \u00b7 ${edge.kos} kos`, action: 'setOut', testId: 'action-setout', variant: 'primary', className: 'button--seal' }),
         createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' }),
       ]));
     } else {
@@ -828,11 +964,12 @@
       createHud(state),
       createElement('main', { className: 'travel-main' }, [
         canvas,
+        createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
         createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
-        createElement('p', { className: 'forecast', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].icon + ' ' + Config.WEATHER[forecastText[0].shown].label : '?'}` }),
+        createElement('p', { className: 'forecast', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
         createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }),
         createElement('div', { className: 'button-row' }, [
-          createButton({ label: state.isPaused ? 'Resume ▶' : 'Pause ⏸', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),
+          createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),
           createButton({ label: 'Rest here', action: 'restDay', testId: 'travel-rest' }),
         ]),
         state.isPaused ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Tap Resume to continue.' }) : null,
@@ -950,7 +1087,6 @@
         body.appendChild(group('Sleep in a sarai', [['ask', 'Ask me'], ['always', 'When I can afford it'], ['never', 'Never']], 'setSaraiDefault', settings.saraiDefault, 'settings-sarai'));
         body.appendChild(createElement('div', { className: 'button-column' }, [
           createButton({ label: `Reduced motion: ${settings.reducedMotion === 'on' ? 'On' : 'Follow device'}`, action: 'toggleReducedMotion', isPressed: settings.reducedMotion === 'on' }),
-          createButton({ label: `CRT scanlines: ${settings.hasScanlines ? 'On' : 'Off'}`, action: 'toggleScanlines', isPressed: settings.hasScanlines }),
           createButton({ label: `Minigame assists (bigger targets, more time): ${settings.hasAssists ? 'On' : 'Off'}`, action: 'toggleAssists', isPressed: settings.hasAssists }),
           createButton({ label: 'Export save file', action: 'exportSave', testId: 'settings-export' }),
           createElement('label', { className: 'button button--secondary file-button' }, ['Import save file', createElement('input', { type: 'file', accept: '.json,application/json', className: 'visually-hidden', dataset: { changeAction: 'importSave', testid: 'settings-import' } })]),
@@ -970,14 +1106,15 @@
     const root = document.documentElement;
     root.style.setProperty('font-size', `${settings.textSizePercent}%`);
     if (settings.theme === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', settings.theme);
-    root.dataset.scanlines = settings.hasScanlines ? 'on' : 'off';
     root.dataset.reducedMotion = settings.reducedMotion;
   }
 
   function flashSaved() {
     const indicator = document.getElementById('save-indicator');
     if (!indicator) return;
-    indicator.textContent = 'Saved ✓';
+    const actionBar = document.querySelector('.action-bar');
+    indicator.style.bottom = `${(actionBar ? actionBar.offsetHeight : 0) + 8}px`;
+    indicator.textContent = 'Saved \u2713';
     indicator.classList.add('save-indicator--visible');
     if (savedIndicatorTimer) clearTimeout(savedIndicatorTimer);
     savedIndicatorTimer = setTimeout(() => { indicator.classList.remove('save-indicator--visible'); indicator.textContent = ''; }, SAVED_INDICATOR_MILLISECONDS);
@@ -997,6 +1134,6 @@
     initialize, showTitle, showOpening, readOpeningName, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
     openCodex, openLog, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
-    getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, PALETTE, createElement,
+    getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,
   });
 })(window.Karvanyan);
