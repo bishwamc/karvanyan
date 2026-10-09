@@ -737,35 +737,69 @@
     return 'forage';
   }
 
+  /** How good fodder cutting is in a region: from the region's fodder rating. 0 means none to cut. */
+  const FODDER_RATING = Object.freeze({ none: 0, scarce: 1, ok: 2, plentiful: 3 });
+
   /**
-   * One rest day, in a city or on the road. The player may play the provisioning minigame
-   * (a pending 'provision' decision) before the night.
+   * One rest day, in a city or on the road. In a city you buy what you need, so nothing is offered.
+   * On the road the player may gather food (hunt, fish or forage) or cut fodder (a pending
+   * 'provision' decision) before the night.
    */
   function restDay(state, random, options) {
     if ((state.phase !== 'stop' && state.phase !== 'road') || state.pending) return state;
     const mode = state.phase === 'stop' ? 'city' : 'road';
     let next = beginDay(state, { isRest: true, mode });
-    const skin = pickSkin(next);
+    if (mode === 'city') return continueDay({ ...next, dayStage: 'evening' }, random, options);
+    const foodSkin = pickSkin(next);
     const region = State.getRegionOfState(next);
-    const rating = skin ? region[skin] * (mode === 'city' ? Config.PROVISION.CITY_RATING_FACTOR : 1) : 0;
-    if (!skin || rating < 0.2) return continueDay({ ...next, dayStage: 'evening' }, random, options);
-    next = { ...next, dayStage: 'evening', pending: { kind: 'provision', data: { skin, rating, mode } } };
-    return next;
+    const foodRating = foodSkin ? region[foodSkin] : 0;
+    const fodderRating = FODDER_RATING[region.fodder] || 0;
+    const hasFood = Boolean(foodSkin) && foodRating >= 0.2;
+    if (!hasFood && fodderRating <= 0) return continueDay({ ...next, dayStage: 'evening' }, random, options);
+    return { ...next, dayStage: 'evening', pending: { kind: 'provision', data: { skin: hasFood ? foodSkin : null, rating: hasFood ? foodRating : 0, fodderRating, mode } } };
+  }
+
+  /** What resting `days` days in a city will cost, so the player can decide before committing. */
+  function estimateRestCost(state, days) {
+    const count = Math.max(1, Math.min(10, Math.floor(days) || 1));
+    const rations = Math.ceil(State.getRationsPerDay(state) * count);
+    const feeds = Math.ceil(State.getFeedsPerDay(state, { weatherKey: state.weather.today, grazeShare: 0 }) * count);
+    const money = state.phase === 'stop' && state.nodeId !== 'khyber' ? Math.ceil(State.getLodgingFee(state) * count) : 0;
+    return { days: count, rations, feeds, money, isRationsShort: rations > state.supplies.rations, isFeedsShort: feeds > state.supplies.feeds, isMoneyShort: money > state.money };
   }
 
   /**
    * Applies a minigame score, or declines (score null). Then the night runs.
    * @param {number|null} score 0-1
    */
-  function resolveProvision(state, random, score, options) {
+  function resolveProvision(state, random, score, options, chosenSkin) {
     if (!state.pending || state.pending.kind !== 'provision') return state;
-    const { skin, rating } = state.pending.data;
+    const data = state.pending.data;
+    const skin = chosenSkin || data.skin || 'fodder';
+    const rating = skin === 'fodder' ? data.fodderRating : data.rating;
     let next = { ...state, pending: null };
     if (score !== null && score !== undefined) next = applyProvisionYield(next, skin, rating, Math.max(0, Math.min(1, score)));
     return continueDay(next, random, options);
   }
 
+  /** Cutting fodder: feeds only, no rations. A good session gathers about a day of feed. */
+  function applyFodderYield(state, rating, score) {
+    const region = State.getRegionOfState(state);
+    const settings = Config.PROVISION;
+    const stock = state.regionStock[region.id];
+    const feedNeed = State.getFeedsPerDay(state, {});
+    const weatherMult = ['rain', 'dust'].includes(state.weather.today) ? 0.8 : 1;
+    let feedGain = feedNeed * settings.FODDER_DAY_FRACTION * (rating / 3) * (0.4 + 0.6 * score) * weatherMult * stock;
+    feedGain = Math.max(0, Math.min(feedGain, State.getFreeCapacity(state) / Config.UNITS.FEED_LU));
+    feedGain = State.roundToTenth(feedGain);
+    let next = State.adjustResources(state, { feeds: feedGain });
+    const newStock = Math.max(0, stock - (settings.FODDER_STOCK_COST_BASE + settings.FODDER_STOCK_COST_PER_SCORE * score));
+    next = { ...next, regionStock: { ...next.regionStock, [region.id]: newStock } };
+    return State.makeNote(next, `Cutting fodder brings ${feedGain} feeds.`);
+  }
+
   function applyProvisionYield(state, skin, rating, score) {
+    if (skin === 'fodder') return applyFodderYield(state, rating, score);
     const mods = State.getModifiers(state);
     const region = State.getRegionOfState(state);
     const people = State.getLivingCount(state) + State.getGuardCount(state);
@@ -798,6 +832,31 @@
     return State.makeNote(next, `${label[0].toUpperCase()}${label.slice(1)} brings ${foodGain} rations${feedGain > 0 ? ` and ${feedGain} feeds` : ''}.`);
   }
 
+  /**
+   * News the player must not miss: illness, recovery, weakness, deaths of people and animals.
+   * Compares two states; returns [{tone, text}] with tone 'danger', 'warning' or 'info'.
+   */
+  function detectAlerts(before, after) {
+    const alerts = [];
+    if (!before || !after || after.phase === 'ended' || before.worldSeed !== after.worldSeed) return alerts;
+    const weakHp = Config.TUNING.WEAK_HP;
+    after.party.forEach((member) => {
+      const old = before.party.find((item) => item.id === member.id);
+      if (!old) return;
+      if (old.isAlive && !member.isAlive) alerts.push({ tone: 'danger', text: `${member.name} has died (${member.cause || 'exhaustion'}).` });
+      else if (member.isAlive && !old.illness && member.illness) alerts.push({ tone: 'warning', text: `${member.name} has fallen ill with ${Config.ILLNESSES[member.illness].label.toLowerCase()}. Rest, or use medicine from the Caravan tab.` });
+      else if (member.isAlive && old.illness && !member.illness) alerts.push({ tone: 'info', text: `${member.name} has recovered.` });
+      else if (member.isAlive && old.hp >= weakHp && member.hp < weakHp) alerts.push({ tone: 'warning', text: `${member.name} is weak (health ${Math.round(member.hp)}). Rest or ease the pace.` });
+    });
+    before.animals.forEach((old) => {
+      const now = after.animals.find((item) => item.id === old.id);
+      const label = Config.ANIMALS[old.type].label.toLowerCase();
+      if (!now) alerts.push({ tone: 'danger', text: `Your ${label} has died.` });
+      else if (old.hp >= weakHp && now.hp < weakHp) alerts.push({ tone: 'warning', text: `Your ${label} is weak and tiring. Rest, feed it, or lighten the load.` });
+    });
+    return alerts;
+  }
+
   /** Waits n days in a city without provisioning (used by storylets and bots). */
   function passCityDays(state, random, days) {
     let next = state;
@@ -819,6 +878,6 @@
     drawWeatherFor, computeWeatherChain, getForecast, getRiverLevel, computeKosToday, estimateLegDays, computeSupplyForecast,
     getRegionBriefing, addRumours, buySupply, buyAnimal, getAnimalPrice, getHirePrice, hireService,
     getOverload, jettison, autoJettison, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
-    pickSkin, restDay, resolveProvision, passCityDays, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
+    pickSkin, restDay, estimateRestCost, detectAlerts, resolveProvision, passCityDays, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
   });
 })(window.Karvanyan);

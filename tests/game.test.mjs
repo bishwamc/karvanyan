@@ -173,8 +173,20 @@ test('content integrity: unique storylets, valid card references, word limits, 1
     storylet.text.forEach((paragraph) => assert.ok(paragraph.split(/\s+/).length <= 45, `${storylet.id} paragraph too long`));
     (JSON.stringify(storylet.choices).match(/"card":"[a-z_]+"/g) || []).forEach((match) => assert.ok(State.findCard(match.slice(8, -1)), `${storylet.id} -> ${match}`));
   });
-  World.NODES.forEach((node) => assert.ok(Content.CODEX.some((card) => card.nodeId === node.id && card.unlock === 'arrival') || node.id === 'kabul' || true));
-  Content.CODEX.forEach((card) => { assert.ok(card.text.split(/\s+/).length <= 45, card.id); assert.ok(['high', 'moderate', 'low'].includes(card.confidence)); assert.equal(card.source, 'TBD'); assert.ok(World.findNode(card.nodeId), card.id); });
+  World.NODES.forEach((node) => assert.equal(Content.CODEX.filter((card) => card.nodeId === node.id && card.unlock === 'arrival').length, 1, `${node.id} needs exactly one city card`));
+  Content.CODEX.forEach((card) => {
+    const words = card.text.split(/\s+/).length;
+    if (card.unlock === 'arrival') {
+      // City cards follow the 3-sentence formula: 65-85 words.
+      assert.ok(words >= 65 && words <= 85, `${card.id} has ${words} words`);
+      assert.equal((card.text.match(/[.!?](\s|$)/g) || []).length, 3, `${card.id} must have 3 sentences`);
+    } else assert.ok(words <= 45, card.id);
+    assert.ok(!/verify|needs? checking|provisional|check before|in place of|replaces/i.test(card.text), `${card.id} still has placeholder wording`);
+  });
+  World.NODES.forEach((node) => assert.ok(!/verify|replaces/i.test(node.notes), `${node.id} note has placeholder wording`));
+  World.NODES.forEach((node) => assert.equal(Content.CODEX.filter((card) => card.nodeId === node.id && card.unlock === 'ask').length, 1, `${node.id} needs exactly one Ask around card`));
+  Content.CODEX.filter((card) => card.unlock === 'ask').forEach((card) => assert.ok(/\b(I|me|my|we|our|us)\b/i.test(card.text), `${card.id} should be in the traveller's own voice`));
+  Content.CODEX.forEach((card) => { assert.ok(['high', 'moderate', 'low'].includes(card.confidence)); assert.equal(card.source, 'TBD'); assert.ok(World.findNode(card.nodeId), card.id); });
   Content.DAULAT_BEG.beats.forEach((line) => assert.ok(line.split(/\s+/).length <= 25, line));
   Object.values(Content.DAULAT_BEG.reasons).forEach((line) => assert.ok(line.split(/\s+/).length <= 25, line));
   assert.equal(Content.CANDIDATES.length, 18);
@@ -198,4 +210,49 @@ test('balance gates (bots): careful 45-75%, random <= 5%, camp-always no better 
   assert.ok(careful >= 0.45 && careful <= 0.75, `careful ${careful}`);
   assert.ok(winRate('random') <= 0.05);
   assert.ok(winRate('campAlways') <= careful + 0.05, 'camp-always should not beat careful');
+});
+
+
+test('resting in a city never offers gathering, and costs can be previewed', () => {
+  const random = State.createRandomSource(5);
+  const state = newGame();
+  assert.equal(state.phase, 'stop');
+  const rested = Engine.restDay(state, random, { saraiPolicy: 'never' });
+  assert.equal(rested.pending, null);
+  assert.equal(rested.dayIndex, state.dayIndex + 1);
+  const one = Engine.estimateRestCost(state, 1);
+  const five = Engine.estimateRestCost(state, 5);
+  assert.equal(five.days, 5);
+  assert.ok(five.rations >= one.rations * 4 && five.rations <= one.rations * 5 + 5);
+  assert.ok(five.money <= one.money * 5 && five.money >= one.money * 5 - 5, 'lodging is rounded once, on the total');
+  assert.equal(Engine.estimateRestCost({ ...state, supplies: { ...state.supplies, rations: 1 } }, 10).isRationsShort, true);
+});
+
+test('fodder can be cut on the road: feeds only, no rations, and it uses up regional stock', () => {
+  const random = State.createRandomSource(7);
+  const start = Engine.beginLeg({ ...newGame(), cargo: { ...newGame().cargo, units: 0 } });
+  const region = State.getRegionOfState(start);
+  assert.notEqual(region.fodder, 'none');
+  const rest = Engine.restDay({ ...start, supplies: { ...start.supplies, feeds: 3 } }, random, { saraiPolicy: 'never' });
+  assert.equal(rest.pending.kind, 'provision');
+  assert.ok(rest.pending.data.fodderRating > 0);
+  const cut = Engine.resolveProvision(rest, random, 1, { saraiPolicy: 'never' }, 'fodder');
+  assert.equal(cut.stats.provisionRations, rest.stats.provisionRations);
+  assert.ok(cut.supplies.feeds > rest.supplies.feeds - Config.TUNING.GRAZE_SHARE.ok * 100);
+  assert.ok(cut.regionStock[region.id] < 1);
+  const skipped = Engine.resolveProvision(rest, State.createRandomSource(7), null, { saraiPolicy: 'never' }, 'fodder');
+  assert.ok(cut.supplies.feeds >= skipped.supplies.feeds);
+});
+
+test('alerts name every illness, weakness and death, but not sales', () => {
+  const state = newGame();
+  const sick = State.makeMemberSick(state, state.party[1].id, 'fever');
+  assert.ok(Engine.detectAlerts(state, sick).some((alert) => alert.tone === 'warning' && alert.text.includes(state.party[1].name)));
+  const dead = State.changeMemberHealth(state, state.party[1].id, -500, 'fever');
+  assert.ok(Engine.detectAlerts(state, dead).some((alert) => alert.tone === 'danger' && alert.text.includes('died')));
+  const lost = { ...state, animals: state.animals.slice(1) };
+  assert.ok(Engine.detectAlerts(state, lost).some((alert) => alert.tone === 'danger'));
+  assert.equal(Engine.detectAlerts(state, state).length, 0);
+  const cured = State.cureMember(sick, state.party[1].id);
+  assert.ok(Engine.detectAlerts(sick, cured).every((alert) => alert.tone === 'info'));
 });

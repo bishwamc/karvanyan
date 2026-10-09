@@ -301,12 +301,14 @@
       }
       createParagraphs(view.paragraphs).forEach((paragraph) => body.appendChild(paragraph));
       if (view.kind === 'provision') {
-        const skinText = { hunt: 'Hunt', fish: 'Fish', forage: 'Forage' }[state.pending.data.skin];
-        body.appendChild(createElement('p', { className: 'paragraph', text: `Today's chance: ${skinText}. It costs nothing, takes about 20 seconds and cannot be skipped once started.` }));
+        const data = state.pending.data;
+        const skinText = data.skin ? { hunt: 'Hunt', fish: 'Fish', forage: 'Forage' }[data.skin] : null;
+        body.appendChild(createElement('p', { className: 'paragraph', text: `Spend the day gathering${skinText && data.fodderRating > 0 ? ': food or fodder' : (skinText ? ` (${skinText.toLowerCase()})` : ' fodder')}. It costs nothing, takes about 20 seconds and cannot be skipped once started.` }));
         body.appendChild(createElement('div', { className: 'button-column' }, [
-          createButton({ label: `Play: ${skinText}`, action: 'startProvision', testId: 'provision-play', variant: 'primary' }),
+          skinText ? createButton({ label: `Gather food: ${skinText}`, action: 'startProvision', argument: data.skin, testId: 'provision-play', variant: 'primary' }) : null,
+          data.fodderRating > 0 ? createButton({ label: 'Cut fodder for the animals', action: 'startProvision', argument: 'fodder', testId: 'provision-fodder', variant: skinText ? 'secondary' : 'primary' }) : null,
           createButton({ label: 'Just rest', action: 'declineProvision', testId: 'provision-decline' }),
-        ]));
+        ].filter(Boolean)));
         return;
       }
       const list = createElement('div', { className: 'choice-list' });
@@ -820,7 +822,10 @@
 
   function createTownTab(state) {
     const node = State.getNode(state);
-    const panels = [createElement('p', { className: 'paragraph stop-blurb', text: node.notes })];
+    const cityCard = Content.CODEX.find((card) => card.nodeId === node.id && card.unlock === 'arrival');
+    const panels = [cityCard
+      ? createPanel(`About ${node.name}`, [createElement('h3', { className: 'card-title', text: cityCard.title }), createElement('p', { className: 'paragraph city-card', text: cityCard.text })])
+      : createElement('p', { className: 'paragraph stop-blurb', text: node.notes })];
     if (node.tier === 'none') return [...panels, createPanel('Market', [createElement('p', { className: 'paragraph', text: 'There is no market here. Only the post and the pass.' })])];
     const capacity = State.getCapacity(state);
     const load = State.getLoad(state);
@@ -877,13 +882,39 @@
     return sections;
   }
 
+  const REST_CHOICES = Object.freeze([1, 3, 5, 10]);
+  let selectedRestDays = 3;
+  function setRestDays(days) { if (REST_CHOICES.includes(days)) selectedRestDays = days; }
+
+  /** Rest N days at once. Shows what it will use, and warns when a supply or the purse is short. */
+  function createRestPanel(state) {
+    const cost = Engine.estimateRestCost(state, selectedRestDays);
+    const unit = (count, word) => `${count} ${word}`;
+    const parts = [
+      `${unit(cost.rations, 'rations')} (you have ${Math.floor(state.supplies.rations)})`,
+      `${unit(cost.feeds, 'feeds')} (you have ${Math.floor(state.supplies.feeds)})`,
+      `${unit(cost.money, 'rupees')} for lodging (you have ${Math.floor(state.money)})`,
+    ];
+    const isShort = cost.isRationsShort || cost.isFeedsShort || cost.isMoneyShort;
+    return createPanel('Rest here', [
+      createElement('fieldset', { className: 'stepper' }, [
+        createElement('legend', { className: 'stepper__legend', text: 'Days to rest' }),
+        createElement('div', { className: 'stepper__buttons' }, REST_CHOICES.map((days) => createButton({ label: String(days), action: 'setRestDays', argument: String(days), testId: `rest-days-${days}`, isPressed: days === selectedRestDays, ariaLabel: `${days} ${days === 1 ? 'day' : 'days'}` }))),
+      ]),
+      createElement('p', { className: `paragraph ${isShort ? 'forecast--warning' : ''}`.trim(), dataset: { testid: 'rest-cost' }, text: `${selectedRestDays} ${selectedRestDays === 1 ? 'day' : 'days'} will use about ${parts.join(', ')}.${isShort ? ' Something runs short: buy more first.' : ''}` }),
+      createElement('p', { className: 'footnote', text: 'Resting heals the sick and the weary. It stops early if someone falls ill or something happens.' }),
+      createButton({ label: `Rest ${selectedRestDays} ${selectedRestDays === 1 ? 'day' : 'days'}`, action: 'restMany', argument: String(selectedRestDays), testId: 'rest-many', variant: 'primary' }),
+    ]);
+  }
+
   function createCaravanTab(state, edge) {
     const hiredText = state.hired.length === 0 ? 'No hired hands.' : state.hired.map((hire) => `${hire.name} (${hire.type}, ${hire.tier})`).join(', ');
     return [
       createPanel('Your party', [createPartyList(state, true), createElement('p', { className: 'paragraph', text: `Hired hands: ${hiredText}` })]),
+      state.phase === 'stop' && state.nodeId !== 'khyber' ? createRestPanel(state) : null,
       createPanel('Pace and rations', [createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'), createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration')]),
       ...createHireSection(state, edge),
-    ];
+    ].filter(Boolean);
   }
 
   function createLearnTab(state, edge) {
@@ -892,7 +923,6 @@
     const briefing = Engine.getRegionBriefing(state, regionId);
     const asks = Content.CODEX.filter((card) => card.nodeId === node.id && card.unlock === 'ask');
     const subplot = Content.SUBPLOTS[state.subplotId];
-    const learnedHere = Content.CODEX.filter((card) => card.nodeId === node.id && state.codex.includes(card.id));
     return [
       createPanel(`Next region: ${briefing.name}${briefing.isGuided ? ' (guided: exact)' : ' (ranges)'}`, [
         createElement('ul', { className: 'briefing' }, [
@@ -903,8 +933,10 @@
         ]),
       ]),
       createPanel('Rumours', state.rumours.length === 0 ? [createElement('p', { className: 'paragraph', text: 'None yet. Sarais and brokers sell rumours; about 6 in 10 are right.' })] : [createElement('ul', { className: 'record-list' }, state.rumours.slice(-5).reverse().map((rumour) => createElement('li', { text: rumour.text })))]),
-      asks.length > 0 ? createPanel('Ask around', [createElement('div', { className: 'button-column' }, asks.map((card) => createButton({ label: state.codex.includes(card.id) ? `${card.title} ✓` : `Ask about: ${card.title}`, action: 'askCard', argument: card.id, testId: `ask-${card.id}`, isDisabled: state.codex.includes(card.id), variant: state.codex.includes(card.id) ? 'quiet' : 'secondary' })))]) : null,
-      learnedHere.length > 0 ? createPanel(`Learned at ${node.name}`, learnedHere.flatMap((card) => [createElement('h3', { className: 'card-title', text: card.title }), createElement('p', { className: 'paragraph', text: card.text })])) : null,
+      asks.length > 0 ? createPanel('Ask around', asks.map((card) => (state.codex.includes(card.id)
+        // Once asked, the answer stays here in the traveller's own words.
+        ? createElement('div', { className: 'ask-answer', dataset: { testid: `ask-answer-${card.id}` } }, [createElement('h3', { className: 'card-title', text: card.title }), createElement('p', { className: 'paragraph', text: card.text })])
+        : createButton({ label: `Ask about: ${card.title}`, action: 'askCard', argument: card.id, testId: `ask-${card.id}` })))) : null,
       createPanel(subplot.label, [createElement('p', { className: 'paragraph', text: `${subplot.qualityLabel}: ${state.qualities[subplot.quality] || 0}. Reputation: ${state.qualities.reputation}.` })]),
       createButton({ label: 'Open the full codex', action: 'openCodex', variant: 'quiet' }),
     ].filter(Boolean);
@@ -985,7 +1017,7 @@
   // Provisioning minigame screen
   // ---------------------------------------------------------------------------
 
-  const SKIN_TEXT = Object.freeze({ hunt: { title: 'The hunt', hint: 'Tap an animal to shoot. Near misses are free; clear misses cost an arrow.' }, fish: { title: 'Fishing', hint: 'Tap a fish shadow when its ring is small and bright. Early or late taps scare it.' }, forage: { title: 'Foraging', hint: 'Tap fruit, roots and grass. Dark, spotted plants are decoys.' } });
+  const SKIN_TEXT = Object.freeze({ hunt: { title: 'The hunt', hint: 'Tap an animal to shoot. Near misses are free; clear misses cost an arrow.' }, fish: { title: 'Fishing', hint: 'Tap a fish shadow when its ring is small and bright. Early or late taps scare it.' }, forage: { title: 'Foraging', hint: 'Tap fruit, roots and grass. Dark, spotted plants are decoys.' }, fodder: { title: 'Cutting fodder', hint: 'Tap the grass bundles to cut them. Dark, spotted thistles are decoys.' } });
 
   /** @returns {{canvas:HTMLCanvasElement, update:(text:string)=>void}} */
   function showProvisionScreen(skin) {
@@ -1077,6 +1109,16 @@
     } });
   }
 
+  /** News the player must not miss: illness, weakness, deaths. Dismissible; the road is paused while it is open. */
+  function openReport(alerts, extraText) {
+    const hasDeath = alerts.some((alert) => alert.tone === 'danger');
+    openSheet({ title: hasDeath ? 'Sad news from the caravan' : 'News from the caravan', testId: 'report', build(body) {
+      if (extraText) body.appendChild(createElement('p', { className: 'paragraph', text: extraText }));
+      body.appendChild(createElement('ul', { className: 'report-list' }, alerts.map((alert) => createElement('li', { className: `report-list__item report-list__item--${alert.tone}`, text: alert.text }))));
+      body.appendChild(createButton({ label: 'Understood', action: 'closeSheet', variant: 'primary', testId: 'report-close' }));
+    } });
+  }
+
   function openSettings(settings, isStorageSupported) {
     openSheet({
       title: 'Settings', testId: 'settings',
@@ -1133,7 +1175,7 @@
   namespace.UI = Object.freeze({
     initialize, showTitle, showOpening, readOpeningName, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
-    openCodex, openLog, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
+    openCodex, openLog, openReport, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
     getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,
   });
 })(window.Karvanyan);

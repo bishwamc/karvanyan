@@ -10,7 +10,7 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '2.5.0';
+  const GAME_VERSION = '2.5.2';
   const SAVE_SCHEMA_VERSION = 2;
 
   const STORAGE_KEYS = Object.freeze({
@@ -139,6 +139,7 @@
     SKIN_YIELD: Object.freeze({ hunt: 1, fish: 0.9, forage: 0.6 }),
     CITY_RATING_FACTOR: 0.25, MAX_SESSION_FRACTION_OF_DAY: 0.8, STOCK_COST_BASE: 0.12, STOCK_COST_PER_SCORE: 0.2,
     STOCK_REGROWTH_PER_DAY: 0.02, BOT_EXPECTED_SCORE: 0.55,
+    FODDER_DAY_FRACTION: 1.2, FODDER_STOCK_COST_BASE: 0.08, FODDER_STOCK_COST_PER_SCORE: 0.12,
   });
 
   const TUNING = Object.freeze({

@@ -58,10 +58,10 @@
     } else {
       for (let index = 0; index < 12; index += 1) {
         const isDecoy = index % 3 === 2;
-        targets.push({ x: 24 + (index % 6) * 50 + random.range(-8, 8), y: 96 + Math.floor(index / 6) * 36 + random.range(-6, 6), kind: isDecoy ? 'decoy' : random.pick(['fruit', 'root', 'grass', 'herb']), isGone: false });
+        targets.push({ x: 24 + (index % 6) * 50 + random.range(-8, 8), y: 96 + Math.floor(index / 6) * 36 + random.range(-6, 6), kind: isDecoy ? 'decoy' : (skin === 'fodder' ? 'grass' : random.pick(['fruit', 'root', 'grass', 'herb'])), isGone: false });
       }
     }
-    const maxPicks = skin === 'forage' ? 8 : settings.MAX_HITS;
+    const maxPicks = (skin === 'forage' || skin === 'fodder') ? 8 : settings.MAX_HITS;
 
     const getScale = () => { const rectangle = options.canvas.getBoundingClientRect(); return rectangle.width > 0 ? rectangle.width / width : 1; };
     /** Hit radius in logical canvas units, from CSS pixels, so tap size feels the same on every screen. */
@@ -163,7 +163,7 @@
         if (target.kind === 'fruit') { ui.drawDisc(ctx, palette.cinnabar, x, y + 1, 5.5); ui.fillRectangle(ctx, palette.leaf, x - 1, y - 6, 3, 3); }
         else if (target.kind === 'root') ui.drawEllipse(ctx, '#b07a45', x, y, 6, 4);
         else if (target.kind === 'grass') {
-          [-3, 0, 3].forEach((offset) => { ctx.beginPath(); ctx.moveTo(x + offset, y + 5); ctx.lineTo(x + offset * 1.6, y - 6); ctx.strokeStyle = palette.ink; ctx.lineWidth = 3; ctx.stroke(); ctx.strokeStyle = '#f0dfa0'; ctx.lineWidth = 1.6; ctx.stroke(); });
+          [-3, 0, 3].forEach((offset) => { ctx.beginPath(); ctx.moveTo(x + offset, y + 5); ctx.lineTo(x + offset * 1.6, y - 6); ctx.strokeStyle = palette.ink; ctx.lineWidth = 4.4; ctx.stroke(); ctx.strokeStyle = '#f0dfa0'; ctx.lineWidth = 2.6; ctx.stroke(); });
         } else if (target.kind === 'herb') ui.drawDisc(ctx, palette.leaf, x, y, 6);
         else { ui.drawDisc(ctx, '#5b3a5e', x, y, 6); ui.fillRectangle(ctx, '#f1e6cf', x - 3, y - 3, 2, 2); ui.fillRectangle(ctx, '#f1e6cf', x + 2, y + 1, 2, 2); }
       }
@@ -182,7 +182,7 @@
           rect(ctx, '#a9c9d6', 0, 0, width, 70);
           ui.drawEllipse(ctx, palette.farMountain, 70, 72, 80, 18);
           ui.drawEllipse(ctx, palette.nearMountain, 250, 72, 90, 13);
-          rect(ctx, skin === 'forage' ? palette.groundGreen : '#9db864', 0, 70, width, height - 70);
+          rect(ctx, (skin === 'forage' || skin === 'fodder') ? palette.groundGreen : '#9db864', 0, 70, width, height - 70);
           rect(ctx, palette.ink, 0, 70, width, 1);
         }
         targets.forEach((target) => paintTarget(ctx, target));
@@ -320,10 +320,17 @@
   function commitState(nextState, opts) {
     const shouldRender = !opts || opts.shouldRender !== false;
     const shouldSave = !opts || opts.shouldSave !== false;
+    const shouldAlert = (!opts || opts.shouldAlert !== false) && shouldRender;
+    const previousState = gameState;
     gameState = nextState;
     if (gameState.phase === 'ended') handleJourneyEnded();
     else if (shouldSave) scheduleAutosave();
     if (shouldRender) renderCurrent();
+    // Illness, weakness and deaths open a report. Selling, buying and treating never do.
+    if (shouldAlert && previousState && gameState.phase !== 'ended') {
+      const alerts = Engine.detectAlerts(previousState, gameState);
+      if (alerts.length > 0) UI().openReport(alerts);
+    }
   }
 
   // ---- the daily loop --------------------------------------------------------
@@ -352,15 +359,19 @@
 
   // ---- provisioning ----------------------------------------------------------
 
-  function beginProvision() {
+  let chosenProvisionSkin = null;
+
+  function beginProvision(chosenSkin) {
     const pending = gameState.pending;
     if (!pending || pending.kind !== 'provision') return;
+    const skin = chosenSkin === 'fodder' && pending.data.fodderRating > 0 ? 'fodder' : (pending.data.skin || 'fodder');
+    chosenProvisionSkin = skin;
     UI().closePending();
     const mods = State.getModifiers(gameState);
     const timeFactor = (settings.hasAssists ? Config.PROVISION.ASSIST_TIME_FACTOR : 1) * (['rain', 'monsoon'].includes(gameState.weather.today) ? 0.8 : 1);
-    const screen = UI().showProvisionScreen(pending.data.skin);
+    const screen = UI().showProvisionScreen(skin);
     provisionSession = startProvisionSession({
-      canvas: screen.canvas, skin: pending.data.skin, durationSeconds: Config.PROVISION.DURATION_SECONDS * timeFactor,
+      canvas: screen.canvas, skin, durationSeconds: Config.PROVISION.DURATION_SECONDS * timeFactor,
       targetScale: (settings.hasAssists ? Config.PROVISION.ASSIST_TARGET_FACTOR : 1) * State.getMod(mods, 'targetSizeMult', 1),
       isStill: isReducedMotion(), random: randomSource, weatherKey: gameState.weather.today,
       onUpdate: screen.update, onFinish: finishProvision,
@@ -370,8 +381,14 @@
   function finishProvision(score) {
     provisionSession = null;
     const before = gameState;
-    const next = Engine.resolveProvision(gameState, randomSource, score, options());
+    const skin = chosenProvisionSkin;
+    const next = Engine.resolveProvision(gameState, randomSource, score, options(), skin);
     commitState(next);
+    if (skin === 'fodder') {
+      const feedsGained = State.roundToTenth(next.supplies.feeds - before.supplies.feeds);
+      UI().showNotice(feedsGained > 0 ? `Cutting fodder brought about ${feedsGained} feeds.` : 'The day brought little fodder.', feedsGained > 0 ? 'info' : 'warning');
+      return;
+    }
     const gained = State.roundToTenth(next.supplies.rations - before.supplies.rations);
     UI().showNotice(gained > 0 ? `The day's work brought about ${gained} rations.` : 'The day brought little food.', gained > 0 ? 'info' : 'warning');
   }
@@ -482,7 +499,7 @@
   /** Runs a trade or service action and shows a notice if it was refused. */
   function applyTrade(result) {
     if (result.reason) { UI().showNotice(result.reason, 'warning'); return; }
-    commitState(result.state);
+    commitState(result.state, { shouldAlert: false });
   }
 
   // ---- actions ---------------------------------------------------------------
@@ -565,9 +582,9 @@
     // town
     buySupply(argument) { applyTrade(Engine.buySupply(gameState, argument)); },
     buyAnimal(argument) { applyTrade(Engine.buyAnimal(gameState, argument)); },
-    sellLot(argument) { commitState(State.sellCargoLot(gameState, Number(argument))); },
-    sellSurplus(argument) { commitState(State.sellSurplus(gameState, argument, 10)); },
-    sellAnimal(argument) { commitState(State.sellAnimal(gameState, argument)); },
+    sellLot(argument) { commitState(State.sellCargoLot(gameState, Number(argument)), { shouldAlert: false }); },
+    sellSurplus(argument) { commitState(State.sellSurplus(gameState, argument, 10), { shouldAlert: false }); },
+    sellAnimal(argument) { commitState(State.sellAnimal(gameState, argument), { shouldAlert: false }); },
     hire(argument) { const [type, tier, listingId] = argument.split(':'); applyTrade(Engine.hireService(gameState, type, tier, listingId || null)); },
     askCard(argument) {
       const card = State.findCard(argument);
@@ -582,18 +599,36 @@
     treatMember(argument) {
       const treatment = State.treatMember(gameState, argument, randomSource);
       if (!treatment.wasPerformed) { UI().showNotice('No medicine, or nobody to treat.', 'warning'); return; }
-      commitState(treatment.state);
+      commitState(treatment.state, { shouldAlert: false });
       UI().showNotice(treatment.wasCured ? 'The medicine works.' : 'The medicine does not cure them this time.', treatment.wasCured ? 'info' : 'warning');
     },
 
     // moving and resting
     setOut() { commitState(Engine.beginLeg(gameState)); saveNow(); },
     restDay() { commitState(Engine.restDay(gameState, randomSource, options())); },
+    setRestDays(argument) { UI().setRestDays(Number(argument)); renderCurrent(); },
+    /** Rests up to N days in a city. Stops early if someone falls ill or dies, or an event needs a decision. */
+    restMany(argument) {
+      const days = Math.max(1, Math.min(10, Math.floor(Number(argument)) || 1));
+      let state = gameState;
+      for (let day = 0; day < days; day += 1) {
+        const next = Engine.restDay(state, randomSource, options());
+        if (next === state) break;
+        const news = Engine.detectAlerts(state, next).filter((alert) => alert.tone !== 'info');
+        state = next;
+        if (state.pending || state.phase !== 'stop' || news.length > 0) break;
+      }
+      const alerts = Engine.detectAlerts(gameState, state);
+      const daysRested = state.dayIndex - gameState.dayIndex;
+      commitState(state, { shouldAlert: false });
+      if (alerts.length > 0) UI().openReport(alerts, daysRested < days ? `You rested ${daysRested} of ${days} days.` : null);
+      else if (state.phase === 'stop') UI().showNotice(`You rested ${daysRested} ${daysRested === 1 ? 'day' : 'days'}.`, 'info');
+    },
     togglePause() { commitState(State.patchState(gameState, { isPaused: !gameState.isPaused })); },
     finishJourney() { commitState(Engine.finishAtDhaka(gameState)); },
 
     // provisioning
-    startProvision() { beginProvision(); },
+    startProvision(argument) { beginProvision(argument); },
     declineProvision() { UI().closePending(); commitState(Engine.resolveProvision(gameState, randomSource, null, options())); },
 
     // encounters
