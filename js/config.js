@@ -10,11 +10,11 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '2.5.2';
+  const GAME_VERSION = '2.8.0';
   const SAVE_SCHEMA_VERSION = 2;
 
   const STORAGE_KEYS = Object.freeze({
-    SAVE: 'karvanyan.save.v2', GRAVES: 'karvanyan.graves.v1', TOP_SCORES: 'karvanyan.top.v2',
+    SAVE: 'karvanyan.save.v2', GRAVES: 'karvanyan.graves.v1', TOP_SCORES: 'karvanyan.top.v2', LOCAL_STATS: 'karvanyan.local-stats.v1',
     SETTINGS: 'karvanyan.settings.v2', LAST_SETUP: 'karvanyan.lastsetup.v1',
   });
 
@@ -162,6 +162,10 @@
     LEADER_SUCCESSION_SCORE_FACTOR: 0.9, SUBPLOT_BONUS_CAP: 150, CODEX_POINTS: 2, CODEX_CAP_FRACTION: 0.15,
     DEATH_SCORE_FRACTION: 0.12, SCORE_SCALE: 1000, SURVIVOR_BASE_WEIGHT: 0.6,
     MIN_PRICE_RUPEES: 1,
+    // Road threats (2.8). Per-day chances, multiplied by the region's threat value (0-5) where noted.
+    // Ambushes are daytime robbery; wildlife and flood are the disasters the threat table already described.
+    ROAD_AMBUSH_CHANCE: 0.015, GUARD_ROAD_DETERRENCE: 0.35,
+    ROAD_WILDLIFE_CHANCE: 0.008, ROAD_FLOOD_CHANCE: 0.02,
   });
 
   /**

@@ -92,6 +92,7 @@
     let next = state;
     const lines = [];
     let waitDays = 0;
+    let keepSupplies = false;
     const mods = State.getModifiers(state);
     (effects || []).forEach((effect) => {
       if (next.phase === 'ended') return;
@@ -115,6 +116,7 @@
       if (effect.quality) next = State.addQuality(next, effect.quality[0], effect.quality[1]);
       if (effect.flag) next = State.setFlag(next, effect.flag, true);
       if (effect.wait) waitDays += effect.wait;
+      if (effect.keepSupplies) keepSupplies = true;
       if (effect.waitUntilMonth !== undefined) waitDays += State.daysUntilMonthStart(next, effect.waitUntilMonth);
       if (effect.animalLoss) next = State.loseAnimal(next, null);
       if (effect.animalHp) {
@@ -133,7 +135,7 @@
           const probability = entry.p * (entry.kitchen ? State.getMod(mods, 'kitchenMult', 1) : 1);
           if (roll < probability) {
             const inner = applyEffects(next, entry.effects, random);
-            next = inner.state; waitDays += inner.waitDays;
+            next = inner.state; waitDays += inner.waitDays; keepSupplies = keepSupplies || inner.keepSupplies;
             if (entry.result) lines.push(entry.result);
             lines.push(...inner.lines);
             break;
@@ -142,7 +144,7 @@
         }
       }
     });
-    return { state: next, lines, waitDays };
+    return { state: next, lines, waitDays, keepSupplies };
   }
 
   // ---------------------------------------------------------------------------
@@ -154,7 +156,7 @@
 
   /** Picks a road storylet by weight from a pool kind ('stranger', 'water', 'animal'). */
   function pickRoadStorylet(state, kind, random) {
-    const poolIds = { stranger: STRANGER_IDS, water: ['water_trouble'], animal: ['animal_lame'] }[kind] || [];
+    const poolIds = { stranger: STRANGER_IDS, water: ['water_trouble'], animal: ['animal_lame'], ambush: ['road_ambush'], wildlife: ['road_wildlife'], flood: ['road_flood'] }[kind] || [];
     const candidates = poolIds.map(getStorylet).filter((storylet) => storylet && meets(state, storylet.requires)
       && (kind !== 'animal' || state.animals.length > 1) && (storylet.id !== 'stranger_help' || state.supplies.medicine >= 1 || state.supplies.rations >= 3));
     if (candidates.length === 0) return null;
@@ -370,11 +372,23 @@
   // View models
   // ---------------------------------------------------------------------------
 
+  /** Days a choice keeps you waiting in a city, and the price of that stay (for the choice chips). */
+  function stayNote(state, effects) {
+    if (state.phase !== 'stop') return null;
+    const days = (effects || []).reduce((sum, effect) => sum + (effect.wait || 0)
+      + (effect.waitUntilMonth !== undefined ? State.daysUntilMonthStart(state, effect.waitUntilMonth) : 0), 0);
+    if (days <= 0) return null;
+    const stay = engine().estimateStayCost(state, days);
+    const kept = (effects || []).some((effect) => effect.keepSupplies) ? ', stores kept' : '';
+    return `About ${stay.days} days in the city: ${stay.money} rupees for lodging${kept}`;
+  }
+
   function storyletView(state, storylet) {
     return {
       kind: 'storylet', id: storylet.id, icon: storylet.icon, title: storylet.title, paragraphs: storylet.text,
       choices: storylet.choices.map((choice) => ({
-        id: choice.id, label: choice.label, tone: choice.tone || 'safe', chips: describeEffects(choice.effects),
+        id: choice.id, label: choice.label, tone: choice.tone || 'safe',
+        chips: [...describeEffects(choice.effects), ...(stayNote(state, choice.effects) ? [stayNote(state, choice.effects)] : [])],
         reason: meets(state, choice.requires) ? null : 'You cannot do this now.',
       })),
     };
@@ -426,7 +440,7 @@
   function runWaits(state, random, days, options) {
     let next = state;
     for (let day = 0; day < days && next.phase !== 'ended' && !next.pending; day += 1) {
-      next = next.phase === 'stop' ? engine().passCityDays(next, random, 1)
+      next = next.phase === 'stop' ? engine().passCityDays(next, random, 1, { keepSupplies: Boolean(options && options.keepSupplies) })
         : engine().continueDay({ ...engine().beginDay(next, { isRest: true, mode: 'road' }), dayStage: 'evening' }, random, { saraiPolicy: (options && options.saraiPolicy) === 'always' ? 'always' : 'never' });
     }
     return next;
@@ -478,7 +492,7 @@
     const message = [choice.result, ...applied.lines].filter(Boolean).join(' ');
     next = State.makeNote(next, message);
     let resumed = resume(next, random, options);
-    if (applied.waitDays > 0) resumed = runWaits(resumed, random, applied.waitDays, options);
+    if (applied.waitDays > 0) resumed = runWaits(resumed, random, applied.waitDays, { ...options, keepSupplies: applied.keepSupplies });
     return { state: resumed, message };
   }
 

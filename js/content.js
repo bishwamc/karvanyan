@@ -147,6 +147,23 @@
       choices: [
         { id: 'rest', label: 'Wrap the leg and rest a while', tone: 'safe', effects: [{ animalHp: 10 }, { rations: -3 }], result: 'After a rest it walks without a limp.' },
         { id: 'leave', label: 'Leave it at a village', tone: 'risky', effects: [{ animalLoss: 1 }], result: 'You redistribute the load and leave it behind.' }] },
+    { id: 'road_ambush', kind: 'road', icon: '🗡️', title: 'Robbers in the ravine', weight: 1, once: false,
+      text: ['Riders come out of a ravine with drawn swords. They want your purse, and they have not yet decided what else they will take.'],
+      choices: [
+        { id: 'pay', label: 'Pay the toll they demand', tone: 'safe', effects: [{ pursePct: -0.12 }], result: 'They take a share of the purse and ride off without a fight.' },
+        { id: 'fight', label: 'Stand and fight', tone: 'risky', effects: [{ hp: { target: 'random', amount: -12, cause: 'violence' } }, { chance: [{ p: 0.3, effects: [{ animalLoss: 1 }], result: 'In the scuffle a pack animal bolts.' }] }], result: 'Your guards and riders drive them off, with bruises on both sides.' },
+        { id: 'scatter', label: 'Scatter and run for the next village', tone: 'danger', effects: [{ cargoPct: -0.1 }, { chance: [{ p: 0.4, effects: [{ pursePct: -0.1 }], result: 'They catch a loaded wagon and take what they can.' }] }], result: 'You lose some cargo in the rush.' }] },
+    { id: 'road_wildlife', kind: 'road', icon: '🐺', title: 'Something in the scrub', weight: 1, once: false,
+      text: ['Something large is watching the caravan from the thorn scrub. The pack animals have caught its scent and will not settle.'],
+      choices: [
+        { id: 'close', label: 'Bunch the animals and walk on quickly', tone: 'safe', effects: [{ hp: { target: 'random', amount: -5, cause: 'violence' } }], result: 'The beast loses interest, though one of your people is scratched.' },
+        { id: 'fire', label: 'Light fires and shout through the night', tone: 'safe', effects: [{ rations: -1 }], result: 'The fires hold it off until morning.' },
+        { id: 'lose', label: 'Let the animals scatter to lure it away', tone: 'danger', effects: [{ animalLoss: 1 }], result: 'It follows the animals. You do not see them again.' }] },
+    { id: 'road_flood', kind: 'road', icon: '🌊', title: 'A flash flood in the wash', weight: 1, once: false,
+      text: ['Rain upstream has turned a dry stream bed into a brown torrent. The caravan is halfway across when the water starts to rise.'],
+      choices: [
+        { id: 'high', label: 'Climb to high ground and wait out the water', tone: 'safe', effects: [{ wait: 2 }, { rations: -2 }, { cargoWet: 2 }], result: 'Two days on the hill. The water drops, though the wet has spoiled some cargo.' },
+        { id: 'push', label: 'Push the animals through at once', tone: 'danger', effects: [{ chance: [{ p: 0.45, effects: [{ cargoPct: -0.15 }, { animalLoss: 1 }], result: 'A load goes into the water, and an animal with it.' }] }], result: 'You reach the far bank wet and shaken.' }] },
     { id: 'traveller_news', kind: 'road', icon: '📜', title: 'A talkative pilgrim', weight: 0.9, once: false,
       text: ['A pilgrim falls in step beside you, full of rumours about the road ahead.'],
       choices: [
@@ -175,8 +192,8 @@
       text: ['Delhi is a great market, but fog and cold hold the road from December to February. A seasoned merchant says winter here is cheaper than a mistake on the road.'],
       choices: [
         { id: 'press', label: 'Press on through the fog', tone: 'risky', effects: [{ foggy: 1 }], result: 'You set out into grey air. Lost days become more likely.' },
-        { id: 'stay10', label: 'Stay ten days', tone: 'safe', effects: [{ wait: 10 }], result: 'Ten days of rest, fresh prices and a long list of bills.' },
-        { id: 'spring', label: 'Stay until spring', tone: 'safe', effects: [{ waitUntilMonth: 2 }], result: 'You winter in the city. Safer, and costly.' },
+        { id: 'stay10', label: 'Stay ten days', tone: 'safe', effects: [{ wait: 10, keepSupplies: true }], result: 'Ten days of rest, fresh prices and a long list of bills. Your stores are not eaten.' },
+        { id: 'spring', label: 'Stay until spring', tone: 'safe', effects: [{ waitUntilMonth: 2, keepSupplies: true }], result: 'You winter in the city. Safer, and costly, but your stores are kept.' },
         { id: 'sell', label: 'Sell most of your cargo here and go light', tone: 'safe', effects: [{ sellShare: 0.7 }], result: 'Cash up, load down, profit lower.' }] },
     { id: 'agra_prices', kind: 'arrival', node: 'agra', icon: '🕌', title: 'Agra, a rich market', once: true,
       text: ['Agra pays well, but so does the east. A cloth broker hints that Patna will pay more.'],

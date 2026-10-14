@@ -27,11 +27,16 @@ js/content.js        recruits, opening lines, storylets, vignettes, subplot beat
 js/state.js          state, modifiers, load, markets and prices, scoring, saves
 js/engine.js         the daily rules: weather, travel, night, rest, provisioning, hiring
 js/events.js         storylet interpreter, toll, river crossings, night prompt, overload
-js/ui.js             DOM rendering, dialogs with focus trap, canvas scenes
+js/route-map.js      journey map geometry and painter (approximate coordinates, not to scale)
+js/services.js       seam for outside services (counts, scoreboard); local-only today
+js/ui.js             DOM rendering, dialogs with focus trap, canvas scenes, journey map sheet
 js/game.js           provisioning minigame, opening flow, loop, actions, boot
 tools/simulate.mjs   headless bot simulator (11 policies from GDD 14.2)
 tools/contrast.mjs   WCAG contrast check for the theme tokens
-tests/game.test.mjs  19 unit and invariant tests
+tests/game.test.mjs  22 unit and invariant tests (graph, calendar, rivers, load, prices, saves, balance gates)
+tests/v28.test.mjs   Delhi stays keep stores, stay-cost preview, daytime road threats
+tests/route-map.test.mjs  journey map geometry and region-change rule
+tests/services.test.mjs   local services seam, including blocked storage and remote fallback
 ```
 
 Rules live in `config`, `world`, `content`, `state`, `engine` and `events`, which never touch the DOM and run under Node. State is never mutated; every transition returns a new object. One delegated click listener serves every button. Dynamic text is inserted with `textContent` only. All randomness is seeded; weather and prices are keyed by seed and day so a reload agrees.
@@ -41,24 +46,32 @@ Saves (`karvanyan.save.v2`) are versioned, checksummed and sanitised on load; a 
 ## Tests and tools (Node 18+, no packages)
 
 ```bash
-node --test tests/game.test.mjs   # 19 tests: graph, calendar, rivers, load, prices, saves, content, balance gates
+node --test tests/*.test.mjs       # 46 tests across four files
 node tools/simulate.mjs 30        # all bot policies; add a policy name to run one
 node tools/contrast.mjs           # 32/32 colour pairs pass
+node tools/event-rates.mjs 120    # how often each road storylet appears, by region
+python3 -m http.server 8099 &   # then, from the project folder:
+python3 tests/e2e/journey_map.py jhelum "You enter Punjab"   # browser test: map opens on entering a region
+python3 tests/e2e/journey_map.py makhsusabad "How far"       # browser test: map opens at the end of a run
 ```
 
 ### Measured balance (bots, 30 runs per archetype, placeholders until humans playtest)
 
+The table below is from version 2.8.0 at 30 runs per archetype. Thirty runs is noisy: the same careful policy measured 59% on 2.5.2 at 30 runs, but 56% at 120 runs on both 2.5.2 and 2.8.0. Treat differences under about ten points as noise. Use `node tools/simulate.mjs 120 careful` before drawing conclusions.
+
 | Policy | Win rate |
 |---|---|
-| careful | 59% (GDD target 55-70%) |
-| careful + guide | 49% |
-| hire-all | 23% |
-| sarai-always | 69% (about 10 points above careful; GDD limit is 8: not met) |
+| careful | 45% at 30 runs (56% at 120; GDD target 55-70%) |
+| careful + guide | 44% |
+| hire-all | 31% |
+| sarai-always | 58% at 30 runs |
 | camp-always | 44% |
-| provision-spam | 41% |
-| wait-winter / idle-heavy | 0% / 3% |
-| sell-all-first / sell-all-at-Dhaka | 30% / 7% |
+| provision-spam | 35% |
+| wait-winter / idle-heavy | 0% / 2% |
+| sell-all-first / sell-all-at-Dhaka | 15% / 1% |
 | random | 0% |
+
+The wait-winter policy waits on its own 90-day rule, not through the Delhi storylet, so it does not exercise the Delhi keep-supplies fix.
 
 Careful runs last about 204 days; losing runs score about half of winning ones. Careful win rates by archetype (60 runs): Persian 83%, Armenian 78%, Pashtun 45%, Uzbek 62%, Yarkandi 42%. Pashtun and Yarkandi are nearly tied, so the "hard" ordering is only roughly met. Archetype score multipliers keep average winning scores within about 7% of each other. Bots cannot judge clarity, tone or fun; playtest with adults on real phones.
 
@@ -76,3 +89,6 @@ Careful runs last about 204 days; losing runs score about half of winning ones. 
 - **Every history card has `source: 'TBD'`.** None has been checked against sources or reviewed by a subject expert (GDD section 15). Distances, market demand, river calendars, climate tables and archetype cargoes are placeholders. Merchants are gameplay archetypes with small perks; the Pashtun toll discount needs a fairness review.
 - Not implemented (reserved by the GDD): hundi and bankers, branching routes, river or riding travel, travel beyond Dhaka, sound, other languages, shared graves, offline install.
 - The scout/guide/guard use-rate and "weather deaths avoidable" metrics are not measured. The canvas art and minigames have been exercised only in a headless DOM, not seen on a real phone.
+- Daytime road threats are the main new risk. Robbery appears about once every eight runs at Kabul, Peshawar and Attock, and once every thirteen runs at Khyber, per 120 simulated runs. Floods are rare, because the game starts in September to November, after the monsoon. This matches the calendar, but it means flood disasters are mostly absent in practice.
+- The journey map is drawn at 640 pixels and shown at phone width, so its labels are small on a phone. Its coordinates are approximate and it is not to scale.
+- No outside services are connected. Counts stay in the browser, and score submission reports not-configured.

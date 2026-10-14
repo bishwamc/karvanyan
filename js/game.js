@@ -16,6 +16,7 @@
   const Engine = namespace.Engine;
   const Events = namespace.Events;
   const UI = () => namespace.UI;
+  const RouteMap = () => namespace.RouteMap;
 
   // ===========================================================================
   // 1. PROVISIONING MINIGAME
@@ -250,6 +251,10 @@
   let openingStep = 0;
   let openingDraft = null;
   let openingSeed = 1;
+  // Journey map waiting to be shown (entering a region, or the end of a run). Shown once no dialog is open.
+  let deferredMap = null;
+  // Outside services (counters, scoreboard) go through this seam. Local-only today; see js/services.js.
+  const services = namespace.Services.createServices();
 
   const options = () => ({ saraiPolicy: settings.saraiDefault });
 
@@ -304,9 +309,50 @@
 
   function renderCurrent() {
     if (!gameState) return;
-    if (gameState.phase === 'ended') { UI().closePending(); UI().showEnd(gameState); return; }
-    renderBackground();
-    if (gameState.pending) UI().showPending(gameState); else UI().closePending();
+    if (gameState.phase === 'ended') { UI().closePending(); UI().showEnd(gameState); }
+    else {
+      renderBackground();
+      if (gameState.pending) UI().showPending(gameState); else UI().closePending();
+    }
+  }
+
+  /** Shows the journey map when no choice dialog or sheet is open; otherwise waits for the next render. */
+  function offerDeferredMap() {
+    if (!deferredMap || !gameState || gameState.pending || UI().hasOpenModal()) return;
+    const shown = deferredMap;
+    deferredMap = null;
+    UI().showJourneyMap(shown.trail, shown.options);
+  }
+
+  /** Decides whether the latest move calls for a journey map: entering a new region, or the end of the run. */
+  function queueJourneyMaps(previousState, nextState) {
+    if (!previousState) return;
+    if (nextState.phase === 'ended' && previousState.phase !== 'ended') {
+      const trail = RouteMap().getJourneyTrail(nextState);
+      deferredMap = {
+        trail,
+        options: {
+          title: 'How far you travelled',
+          caption: `You covered ${trail.kosTravelled} of ${trail.totalKos} kos, through ${trail.regionsReached} ${trail.regionsReached === 1 ? 'region' : 'regions'}.`,
+          description: `Map of the route. The caravan covered ${trail.kosTravelled} of ${trail.totalKos} kos.`,
+          buttonLabel: 'Continue',
+        },
+      };
+      return;
+    }
+    if (nextState.phase !== 'stop') return;
+    const change = RouteMap().getRegionChange(previousState.nodeId, nextState.nodeId);
+    if (!change) return;
+    const trail = RouteMap().getJourneyTrail(nextState);
+    deferredMap = {
+      trail,
+      options: {
+        title: `You enter ${change.name}`,
+        caption: `${trail.kosTravelled} of ${trail.totalKos} kos behind you.`,
+        description: `Map of the route. The caravan has entered ${change.name}.`,
+        buttonLabel: 'Continue',
+      },
+    };
   }
 
   function handleJourneyEnded() {
@@ -314,6 +360,7 @@
     hasRecordedEnding = true;
     State.clearSavedGame();
     State.recordTopScore(gameState);
+    services.recordJourneyEnd({ stopId: gameState.nodeId });
   }
 
   /** Adopts a state, handles endings and autosave, then redraws. */
@@ -325,12 +372,15 @@
     gameState = nextState;
     if (gameState.phase === 'ended') handleJourneyEnded();
     else if (shouldSave) scheduleAutosave();
+    queueJourneyMaps(previousState, gameState);
     if (shouldRender) renderCurrent();
     // Illness, weakness and deaths open a report. Selling, buying and treating never do.
     if (shouldAlert && previousState && gameState.phase !== 'ended') {
       const alerts = Engine.detectAlerts(previousState, gameState);
       if (alerts.length > 0) UI().openReport(alerts);
     }
+    // Last, so the journey map waits behind any report or dialog that this move opened.
+    offerDeferredMap();
   }
 
   // ---- the daily loop --------------------------------------------------------
@@ -449,7 +499,9 @@
     gameState = State.createNewGame(setup);
     randomSource = State.createRandomSource(setup.worldSeed ^ 0x9e3779b9);
     hasRecordedEnding = false;
+    deferredMap = null;
     millisecondsIntoDay = 0;
+    services.recordJourneyStart({ archetypeId: setup.archetypeId });
     renderCurrent();
     saveNow();
   }
@@ -462,6 +514,7 @@
     gameState = state;
     randomSource = State.createRandomSource(randomState);
     hasRecordedEnding = false;
+    deferredMap = null;
     millisecondsIntoDay = 0;
     renderCurrent();
   }
@@ -509,7 +562,7 @@
   /** @type {Object<string, (argument:string|undefined, source:HTMLElement)=>void>} */
   const ACTIONS = {
     // menus
-    goToTitle() { gameState = null; showTitleScreen(); },
+    goToTitle() { gameState = null; deferredMap = null; showTitleScreen(); },
     newJourney() {
       if (State.loadGame().status === 'ok') { UI().confirmAction({ title: 'Start a new journey?', message: 'Your saved run will be replaced.', confirmLabel: 'Replace my save', action: 'confirmNewJourney' }); return; }
       startOpening();
@@ -562,7 +615,7 @@
     openCodex() { UI().openCodex(gameState); },
     openLog() { UI().openLog(gameState); },
     openSettings() { UI().openSettings(settings, State.isStorageSupported()); },
-    closeSheet() { UI().closeTopSheet(); },
+    closeSheet() { UI().closeTopSheet(); offerDeferredMap(); },
     setTextSize(argument) { settings = { ...settings, textSizePercent: Number(argument) }; applyAndPersistSettings(); reopenSettingsSheet(); },
     setTheme(argument) { settings = { ...settings, theme: argument }; applyAndPersistSettings(); reopenSettingsSheet(); },
     setSaraiDefault(argument) { settings = { ...settings, saraiDefault: argument }; applyAndPersistSettings(); reopenSettingsSheet(); },
@@ -637,7 +690,7 @@
       const outcome = Events.choose(gameState, argument, randomSource, options());
       if (!outcome) return;
       commitState(outcome.state, { shouldRender: false });
-      if (outcome.state.phase === 'ended') { UI().closePending(); UI().showEnd(gameState); return; }
+      if (outcome.state.phase === 'ended') { UI().closePending(); UI().showEnd(gameState); offerDeferredMap(); return; }
       UI().showPending(gameState, { resultMessage: outcome.message, referenceView: previousView });
     },
     encounterContinue() { UI().closePending(); renderCurrent(); },

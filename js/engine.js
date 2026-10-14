@@ -413,6 +413,13 @@
     return rollRoadEvent(next, random);
   }
 
+  /** Total strength of hired guards (sum of tier strengths). */
+  function guardStrengthOf(state) {
+    return state.hired
+      .filter((hire) => hire.type === 'guard')
+      .reduce((sum, hire) => sum + Config.SERVICES.guard.tiers.find((tier) => tier.id === hire.tier).strength, 0);
+  }
+
   /** At most one road event per day (GDD 7.7): dilemma, checkpoint, or a small encounter. */
   function rollRoadEvent(state, random) {
     const region = State.getRegionOfState(state);
@@ -427,7 +434,13 @@
       return { ...state, pending: { kind: 'checkpoint', id: 'checkpoint_generic', data: { baseToll: 10 + 12 * region.threat.authority } } };
     }
     const dry = ['hot', 'extreme', 'dust'].includes(state.weather.today);
+    const wet = Config.WEATHER[state.weather.today].wet;
+    // Guards deter daytime robbers; a flood only comes with wet weather.
+    const deterrence = 1 / (1 + TUNING.GUARD_ROAD_DETERRENCE * guardStrengthOf(state));
     const rolls = [
+      ['flood', TUNING.ROAD_FLOOD_CHANCE * region.threat.flood * (wet ? 1 : 0)],
+      ['ambush', TUNING.ROAD_AMBUSH_CHANCE * region.threat.bandit * deterrence],
+      ['wildlife', TUNING.ROAD_WILDLIFE_CHANCE * region.threat.wildlife],
       ['stranger', TUNING.STRANGER_CHANCE], ['water', TUNING.WATER_TROUBLE_CHANCE * (dry ? 2 : 1)], ['animal', TUNING.ANIMAL_TROUBLE_CHANCE * State.getMod(mods, 'animalLossMult', 1)],
     ];
     for (const [kind, probability] of rolls) {
@@ -641,7 +654,7 @@
     const { place, region, mods } = ctx;
     const nightFactor = place === 'sarai' ? TUNING.SARAI_ATTACK_FACTOR : TUNING.CAMP_ATTACK_FACTOR;
     const guards = state.hired.filter((hire) => hire.type === 'guard');
-    const guardStrength = guards.reduce((sum, hire) => sum + Config.SERVICES.guard.tiers.find((tier) => tier.id === hire.tier).strength, 0);
+    const guardStrength = guardStrengthOf(state);
     let next = state;
 
     const attackRolls = [['bandit', region.threat.bandit, 0], ['wildlife', region.threat.wildlife, State.getMod(mods, 'wildlifeDefenceBonus', 0)]];
@@ -857,15 +870,42 @@
     return alerts;
   }
 
-  /** Waits n days in a city without provisioning (used by storylets and bots). */
-  function passCityDays(state, random, days) {
+  /**
+   * Waits n days in a city without provisioning (used by storylets and bots).
+   * Lodging is still charged each night. With keepSupplies, rations and feeds are put back at the end
+   * of each day, so the stay costs money but not stock (the Delhi winter stays). Medicine, cargo and
+   * animals are not restored.
+   * @param {{keepSupplies?:boolean}} [options]
+   */
+  function passCityDays(state, random, days, options) {
+    const keepSupplies = Boolean(options && options.keepSupplies);
     let next = state;
     for (let day = 0; day < days && next.phase !== 'ended'; day += 1) {
+      const eatenFrom = keepSupplies ? { rations: next.supplies.rations, feeds: next.supplies.feeds } : null;
       next = beginDay(next, { isRest: true, mode: 'city' });
       next = continueDay({ ...next, dayStage: 'evening' }, random, { saraiPolicy: 'never' });
+      if (eatenFrom) next = { ...next, supplies: { ...next.supplies, rations: eatenFrom.rations, feeds: eatenFrom.feeds } };
       if (next.pending) break;
     }
     return next;
+  }
+
+  /**
+   * Money a city stay of `days` nights costs. It replays processNight's rule night by night: lodging is
+   * charged only when the purse covers it, and money is rounded after each charge. No lodging at Khyber.
+   */
+  function estimateStayCost(state, days) {
+    const count = Math.max(1, Math.min(365, Math.floor(days) || 1));
+    const fee = State.getLodgingFee(state);
+    let money = state.money;
+    let isMoneyShort = false;
+    if (state.nodeId !== 'khyber') {
+      for (let night = 0; night < count; night += 1) {
+        if (money >= fee) money = Math.max(0, Math.round(money - fee));
+        else isMoneyShort = true;
+      }
+    }
+    return { days: count, money: state.money - money, isMoneyShort };
   }
 
   /** Ends the journey at Dhaka after the final sales. */
@@ -878,6 +918,6 @@
     drawWeatherFor, computeWeatherChain, getForecast, getRiverLevel, computeKosToday, estimateLegDays, computeSupplyForecast,
     getRegionBriefing, addRumours, buySupply, buyAnimal, getAnimalPrice, getHirePrice, hireService,
     getOverload, jettison, autoJettison, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
-    pickSkin, restDay, estimateRestCost, detectAlerts, resolveProvision, passCityDays, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
+    pickSkin, restDay, estimateRestCost, detectAlerts, resolveProvision, passCityDays, estimateStayCost, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
   });
 })(window.Karvanyan);

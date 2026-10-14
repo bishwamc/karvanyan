@@ -1172,10 +1172,39 @@
   const toggleHudExpanded = () => { isHudExpanded = !isHudExpanded; };
   const setStopTab = (tabId) => { activeStopTab = ['town', 'caravan', 'learn'].includes(tabId) ? tabId : 'town'; };
 
+  // ---------------------------------------------------------------------------
+  // Journey map sheet (shown on entering a region and at the end of a run)
+  // ---------------------------------------------------------------------------
+
+  const MAP_WIDTH = 640;
+  const MAP_HEIGHT = 400;
+
+  /**
+   * Opens the journey map as a dismissible sheet over the current screen.
+   * @param {Object} trail  from namespace.RouteMap.getJourneyTrail
+   * @param {{title:string, caption:string, description:string, buttonLabel?:string}} options
+   */
+  function showJourneyMap(trail, options) {
+    const canvas = createElement('canvas', {
+      className: 'journey-map', width: String(MAP_WIDTH), height: String(MAP_HEIGHT),
+      role: 'img', 'aria-label': options.description, dataset: { testid: 'journey-map' },
+    });
+    openSheet({
+      title: options.title,
+      testId: 'journey-map-sheet',
+      build(body) {
+        body.appendChild(canvas);
+        body.appendChild(createElement('p', { className: 'paragraph', text: options.caption }));
+        body.appendChild(createButton({ label: options.buttonLabel || 'Continue', action: 'closeSheet', variant: 'primary', testId: 'journey-map-continue' }));
+      },
+    });
+    namespace.RouteMap.paintJourneyMap(canvas.getContext('2d'), trail, MAP_WIDTH, MAP_HEIGHT);
+  }
+
   namespace.UI = Object.freeze({
     initialize, showTitle, showOpening, readOpeningName, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
-    openCodex, openLog, openReport, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
+    openCodex, openLog, openReport, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
     getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,
   });
 })(window.Karvanyan);

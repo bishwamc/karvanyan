@@ -1,0 +1,11 @@
+/* Journey map sheet. Canvas keeps its 640x400 drawing size and scales down on phones. */
+.journey-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 640px;
+  margin: 0 auto 12px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: #f1e6cf;
+}
