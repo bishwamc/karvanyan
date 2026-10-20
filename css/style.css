@@ -453,3 +453,78 @@ html[data-reduced-motion="on"] *, html[data-reduced-motion="on"] *::before, html
 .report-list__item--warning { border-left-color: var(--color-warning); }
 .report-list__item--info { border-left-color: var(--color-safe); }
 .city-card { max-width: 60ch; }
+
+/* ==========================================================================
+   Version 3.0: radio groups, decision sheet, party strip, Today block, footer,
+   and the two-column "ledger spread" layout on wide screens.
+   ========================================================================== */
+
+/* ---------- Radio groups drawn as segmented buttons ---------- */
+.segments { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.segment { position: relative; flex: 1 1 5rem; display: flex; }
+/* The real radio sits invisibly over its label, so a tap anywhere selects it and arrow keys still work. */
+.segment__input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.segment__label {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  min-height: var(--tap-target); padding: var(--space-2) var(--space-3);
+  border: 2px solid var(--color-border); border-radius: var(--radius-small);
+  background: var(--color-surface-raised); color: var(--color-text);
+  font-family: var(--font-display); font-size: var(--text-small); font-weight: 700; text-align: center;
+}
+.segment__input:checked + .segment__label { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+.segment__input:focus-visible + .segment__label { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* ---------- Party strip (always visible on the road) ---------- */
+.party-strip {
+  list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border); background: var(--color-surface); font-size: var(--text-small);
+}
+.party-strip__item { font-weight: 700; }
+.party-strip__item--warning { color: var(--color-warning); }
+.party-strip__item--dead { color: var(--color-text-muted); text-decoration: line-through; }
+
+/* ---------- Exact numbers: the caravan snapshot ---------- */
+.snapshot__list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: var(--space-3) 0; font-size: var(--text-small); }
+.snapshot__term { align-self: center; color: var(--color-text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.snapshot__value { margin: 0; font-weight: 700; }
+.snapshot__value--warning { color: var(--color-warning); }
+
+/* ---------- The decision sheet ---------- */
+.report-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
+.report-actions {
+  position: sticky; bottom: calc(-1 * var(--space-5)); display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin-top: var(--space-3); padding: var(--space-3) 0 var(--space-1);
+  background: var(--color-surface); border-top: 1px solid var(--color-border);
+}
+.report-actions .button--primary { flex: 1 1 10rem; }
+
+/* ---------- Today block on the road ---------- */
+.today { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-left: 4px solid var(--color-gold); background: var(--color-surface); }
+.today__title { margin: 0; font-family: var(--font-display); font-size: var(--text-small); color: var(--color-rule); text-transform: uppercase; letter-spacing: 0.06em; }
+.today .trail-log { margin: var(--space-1) 0 0; padding-left: 0; list-style: none; color: var(--color-text); }
+.today .trail-log li { margin-bottom: var(--space-1); }
+.trail-log__quiet { color: var(--color-text-muted); font-style: italic; }
+
+/* ---------- Footer on every screen ---------- */
+.site-footer { margin: var(--space-5) 0 var(--space-3); text-align: center; color: var(--color-text-muted); font-size: 0.8125rem; }
+.site-footer__link { display: inline-block; padding: var(--space-2) var(--space-1); color: inherit; text-decoration: underline; }
+a.button { text-decoration: none; }
+
+/* ---------- Wide screens: the ledger spread ---------- */
+@media (min-width: 900px) {
+  :root { --content-width: 1180px; }
+  .modal { width: min(640px, 100%); }
+  .scene-canvas { width: 100%; }
+
+  /* Road: the account of the caravan on the left page, the road on the right. */
+  .travel-main { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--space-5); align-items: start; }
+  .travel-ledger { order: -1; }
+  .travel-ledger .caravan-panel { margin-top: 0; }
+
+  /* Stop: the picture and advice beside the tabs. */
+  .stop-grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: var(--space-5); align-items: start; }
+  .stop-aside { position: sticky; top: 7rem; }
+  .stop-aside .scene-canvas { margin-top: 0; }
+  .stop-body .tabs { margin-top: 0; }
+}

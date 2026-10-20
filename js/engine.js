@@ -87,7 +87,7 @@
     const date = State.getDate(state);
     let level = World.getBaseRiverLevel(riverId, date.getUTCMonth());
     const heavyDays = state.weather.history.filter((key) => Config.WEATHER[key].heavyRain).length;
-    if (heavyDays >= 2 && level >= 1) level += 1;
+    if (heavyDays >= 2) level += 1; // 3.0: heavy rain can lift even low water to normal
     return ['low', 'normal', 'high', 'flood'][Math.min(3, level)];
   }
 
@@ -322,7 +322,7 @@
     if (!edge) return state;
     if (getOverload(state) > 0 && state.animals.length > 0) return { ...state, pending: { kind: 'jettison', data: {} } };
     const departed = { ...state, phase: 'road', edgeId: edge.id, kosOnEdge: 0, doneCrossings: [], isPaused: false };
-    return State.makeNote(departed, `Set out for ${World.findNode(edge.to).name}.`);
+    return State.makeNote(departed, `Set out for ${World.findNode(edge.to).name}.`, 'routine');
   }
 
   /** Morning: the date advances, weather is drawn, regional stock regrows. */
@@ -358,7 +358,7 @@
       hired: state.hired.filter((hire) => !(hire.untilNode && hire.untilNode === node.id) && !(hire.untilRegion && hire.untilRegion !== node.region)),
     };
     next = State.learnCard(next, node.id === 'kabul' ? 'kab_crossroads' : (Content.CODEX.find((item) => item.nodeId === node.id && item.unlock === 'arrival') || {}).id);
-    next = State.makeNote(next, `The caravan reaches ${node.name}.`);
+    next = State.makeNote(next, `The caravan reaches ${node.name}.`, 'routine');
     next = State.ensurePool(next, node.id);
     next = { ...next, dayCtx: { ...next.dayCtx, arrived: true } };
     return events().queueArrival(next);
@@ -393,7 +393,7 @@
     const foggy = (next.flags.fogUntil || 0) > next.dayIndex;
     let lostChance = TUNING.LOST_DAY_CHANCE * State.getMod(mods, 'lostDayMult', 1) * (weatherKey === 'fog' || foggy ? TUNING.FOG_LOST_DAY_FACTOR : 1);
     if (guided) lostChance = 0;
-    if (random.chance(lostChance)) return State.makeNote(next, 'You lose the road in the murk and make no headway.');
+    if (random.chance(lostChance)) return State.makeNote(next, 'You lose the road in the murk and make no headway.', 'stop');
 
     const kos = computeKosToday(next, edge, weatherKey);
     for (const crossing of edge.crossings) {
@@ -406,7 +406,7 @@
     }
     const kosAfter = next.kosOnEdge + kos;
     edge.waypoints.forEach((waypoint) => {
-      if (next.kosOnEdge < waypoint.atKos && kosAfter >= waypoint.atKos) next = State.makeNote(next, `You pass the waypoint of ${waypoint.name}.`);
+      if (next.kosOnEdge < waypoint.atKos && kosAfter >= waypoint.atKos) next = State.makeNote(next, `You pass the waypoint of ${waypoint.name}.`, 'routine');
     });
     if (kosAfter >= edge.kos) return arriveAtStop(next, edge);
     next = { ...next, kosOnEdge: State.roundToTenth(kosAfter) };
@@ -527,13 +527,19 @@
     const rationsSatisfaction = rationsNeed <= 0 ? 1 : Math.min(1, next.supplies.rations / rationsNeed);
     next = State.adjustResources(next, { rations: -rationsNeed });
     next = { ...next, stats: { ...next.stats, rationsEaten: next.stats.rationsEaten + rationsNeed } };
-    if (rationsSatisfaction < 1) next = State.makeNote(next, 'The caravan goes hungry.');
+    // Only the first night of a shortage opens the decision sheet; the nights after it go to the log, so a starving caravan is not nagged daily.
+    const wasHungry = Boolean(next.flags.hungry);
+    if (rationsSatisfaction < 1) next = State.setFlag(State.makeNote(next, 'The caravan goes hungry. Everyone loses health.', wasHungry ? undefined : 'danger'), 'hungry', true);
+    else if (wasHungry) next = State.setFlag(next, 'hungry', false);
 
     // 3. Feeds and grazing (grazing only when camping)
     const graze = place === 'camp' ? TUNING.GRAZE_SHARE[region.fodder] : 0;
     const feedsNeed = State.getFeedsPerDay(next, { weatherKey: state.weather.today, grazeShare: graze });
     const feedsSatisfaction = feedsNeed <= 0 ? 1 : Math.min(1, next.supplies.feeds / feedsNeed);
     next = State.adjustResources(next, { feeds: -feedsNeed });
+    const wasFeedShort = Boolean(next.flags.feedShort);
+    if (feedsSatisfaction < 1 && next.animals.length > 0) next = State.setFlag(State.makeNote(next, 'The animals go without enough feed. They lose strength.', wasFeedShort ? undefined : 'danger'), 'feedShort', true);
+    else if (wasFeedShort) next = State.setFlag(next, 'feedShort', false);
 
     // 4. Animals
     const pace = Config.PACES[next.pace];
@@ -605,6 +611,7 @@
 
     // 6. Cargo condition
     next = applyCargoDecay(next, { place, isRest, weatherKey: state.weather.today });
+    if (next.phase === 'road') next = applySupplyWarnings(next);
 
     // 7. Hired guards: deserters when rations are cut
     const cutRations = next.rationLevel !== 'filling';
@@ -612,12 +619,12 @@
     const deserters = next.hired.filter((hire) => hire.type === 'guard' && hire.hungryDays >= TUNING.GUARD_DESERT_DAYS || (hire.type === 'guard' && rationsSatisfaction < 1));
     if (deserters.length > 0) {
       next = { ...next, hired: next.hired.filter((hire) => !deserters.includes(hire)) };
-      next = State.makeNote(next, 'Hungry guards desert in the night.');
+      next = State.makeNote(next, 'Hungry guards desert in the night.', 'stop');
     }
 
     // 8. A telegraphing vignette
     next = maybeAddVignette(next, random);
-    return State.makeNote(next, `Night in a ${place === 'camp' ? 'camp' : (place === 'sarai' ? 'sarai' : 'city lodging')}. ${Config.WEATHER[state.weather.today].label}.`);
+    return State.makeNote(next, `Night in a ${place === 'camp' ? 'camp' : (place === 'sarai' ? 'sarai' : 'city lodging')}. ${Config.WEATHER[state.weather.today].label}.`, 'routine');
   }
 
   function rollNewIllness(state, random, ctx) {
@@ -669,7 +676,7 @@
     const theftThreat = region.threat.theft;
     if (theftThreat > 0 && random.chance(0.012 * theftThreat * State.getMod(mods, 'theftMult', 1) * (place === 'sarai' ? TUNING.SARAI_THEFT_FACTOR : 0.4))) {
       const loss = Math.round(next.money * (0.03 + 0.05 * random.next()));
-      next = State.makeNote(State.adjustResources(next, { money: -loss }), `A thief lifts ${loss} rupees.`);
+      next = State.makeNote(State.adjustResources(next, { money: -loss }), `A thief lifts ${loss} rupees.`, 'stop');
     }
     return next;
   }
@@ -677,26 +684,26 @@
   function applyAttackLoss(state, random, kind, mods, guards) {
     let next = state;
     if (kind === 'wildlife') {
-      if (random.chance(0.5) && next.animals.length > 0) return State.makeNote(State.loseAnimal(next, null), 'Wild animals drag down a pack animal.');
+      if (random.chance(0.5) && next.animals.length > 0) return State.makeNote(State.loseAnimal(next, null), 'Wild animals drag down a pack animal.', 'danger');
       const living = State.getLivingIndices(next);
       const victim = next.party[random.pick(living)];
-      return State.makeNote(State.changeMemberHealth(next, victim.id, -random.range(10, 25), 'violence'), `${victim.name} is mauled in the night.`);
+      return State.makeNote(State.changeMemberHealth(next, victim.id, -random.range(10, 25), 'violence'), `${victim.name} is mauled in the night.`, 'danger');
     }
     const roll = random.next() * 5;
     if (roll < 2) {
       const fraction = TUNING.ATTACK_LOSS_PURSE[0] + random.next() * (TUNING.ATTACK_LOSS_PURSE[1] - TUNING.ATTACK_LOSS_PURSE[0]);
       const loss = Math.round(next.money * fraction);
-      next = State.makeNote(State.adjustResources(next, { money: -loss }), `Robbers take ${loss} rupees from the purse.`);
+      next = State.makeNote(State.adjustResources(next, { money: -loss }), `Robbers take ${loss} rupees from the purse.`, 'danger');
     } else if (roll < 4 && next.cargo && next.cargo.units > 0) {
       const fraction = TUNING.ATTACK_LOSS_CARGO[0] + random.next() * (TUNING.ATTACK_LOSS_CARGO[1] - TUNING.ATTACK_LOSS_CARGO[0]);
       const loss = Math.max(1, Math.round(next.cargo.units * fraction));
-      next = State.makeNote({ ...next, cargo: { ...next.cargo, units: Math.max(0, next.cargo.units - loss) } }, `Robbers take ${loss} lots of cargo.`);
+      next = State.makeNote({ ...next, cargo: { ...next.cargo, units: Math.max(0, next.cargo.units - loss) } }, `Robbers take ${loss} lots of cargo.`, 'danger');
     } else if (next.animals.length > 0) {
-      next = State.makeNote(State.loseAnimal(next, null), 'Robbers drive off a pack animal and its load.');
+      next = State.makeNote(State.loseAnimal(next, null), 'Robbers drive off a pack animal and its load.', 'danger');
     }
     if (guards.length > 0 && random.chance(0.3)) {
       next = { ...next, hired: next.hired.filter((hire, index) => !(hire.type === 'guard' && index === next.hired.findIndex((item) => item.type === 'guard'))) };
-      next = State.makeNote(next, 'A guard is lost in the fight.');
+      next = State.makeNote(next, 'A guard is lost in the fight.', 'danger');
     }
     return next;
   }
@@ -845,29 +852,121 @@
     return State.makeNote(next, `${label[0].toUpperCase()}${label.slice(1)} brings ${foodGain} rations${feedGain > 0 ? ` and ${feedGain} feeds` : ''}.`);
   }
 
+  // ---------------------------------------------------------------------------
+  // News (3.0): what stops the game, and how long a quiet day stays on screen
+  // ---------------------------------------------------------------------------
+
+  /** Log lines added between two states, oldest first. Uses serial numbers, so it survives the 80-line cap. */
+  function getNewLogEntries(before, after) {
+    const lastSerial = before ? State.getLastLogSerial(before) : 0;
+    return after.log.filter((entry) => Number.isFinite(entry.serial) && entry.serial > lastSerial);
+  }
+
+  /** Words in a line, for reading time. */
+  const countWords = (text) => (String(text).trim().split(/\s+/).filter(Boolean).length);
+
   /**
-   * News the player must not miss: illness, recovery, weakness, deaths of people and animals.
-   * Compares two states; returns [{tone, text}] with tone 'danger', 'warning' or 'info'.
+   * How long a day stays on screen. A quiet day takes a fixed time. A day that leaves ordinary news
+   * (no level: not routine, and not a stop that opens the decision sheet) is held about 250 ms per word, capped.
+   * @param {Array<{text:string, level?:string}>} newEntries
+   * @returns {number} milliseconds
    */
-  function detectAlerts(before, after) {
+  function getDayHoldMilliseconds(newEntries) {
+    const readableWords = newEntries.filter((entry) => !entry.level).reduce((sum, entry) => sum + countWords(entry.text), 0);
+    const readingTime = readableWords * TUNING.READING_MILLISECONDS_PER_WORD;
+    return Math.min(TUNING.MAX_DAY_MILLISECONDS, Math.max(TUNING.QUIET_DAY_MILLISECONDS, readingTime));
+  }
+
+  /** Supply warning band: 0 fine, 1 short for this leg, 2 under two days, 3 gone. */
+  function getSupplyBand(daysLeft, legDays) {
+    if (daysLeft <= 0) return 3;
+    if (daysLeft < TUNING.SUPPLY_WARNING_SOON_DAYS) return 2;
+    if (daysLeft < legDays) return 1;
+    return 0;
+  }
+
+  /**
+   * Decides the next stored warning level. A new, worse band warns at once. A better band only lowers the level
+   * once supplies are REARM days above the level's own threshold, so a warning never flickers on and off.
+   * @returns {{level:number, isNewWarning:boolean}}
+   */
+  function getNextSupplyLevel(currentLevel, daysLeft, legDays) {
+    const band = getSupplyBand(daysLeft, legDays);
+    if (band > currentLevel) return { level: band, isNewWarning: true };
+    if (band < currentLevel) {
+      const thresholdOfCurrentLevel = currentLevel === 1 ? legDays : (currentLevel === 2 ? TUNING.SUPPLY_WARNING_SOON_DAYS : 0);
+      if (daysLeft >= thresholdOfCurrentLevel + TUNING.SUPPLY_WARNING_REARM_DAYS) return { level: band, isNewWarning: false };
+    }
+    return { level: currentLevel, isNewWarning: false };
+  }
+
+  const dayWord = (count) => (count === 1 ? 'day' : 'days');
+
+  function describeSupplyWarning(kind, level, daysLeft, legDays, destination) {
+    const name = kind === 'rations' ? 'rations' : 'feed';
+    if (level === 3) return kind === 'rations' ? 'The rations are gone. Everyone will go hungry.' : 'The feed is gone. The animals will weaken.';
+    if (level === 2) return `Less than two days of ${name} left.`;
+    return `The ${name} will not last to ${destination}: about ${daysLeft} ${dayWord(daysLeft)} left, ${legDays} ${dayWord(legDays)} to go.`;
+  }
+
+  /** On a road day, writes a stop-level note when rations or feed cross a warning level (see getNextSupplyLevel). */
+  function applySupplyWarnings(state) {
+    const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
+    if (state.phase === 'ended' || !edge) return state;
+    const forecast = computeSupplyForecast(state, edge);
+    const levels = { rations: 0, feeds: 0, ...state.supplyWarning };
+    let next = state;
+    [['rations', forecast.rationDays], ['feeds', forecast.feedDays]].forEach(([kind, daysLeft]) => {
+      const decision = getNextSupplyLevel(levels[kind], daysLeft, forecast.legDays);
+      levels[kind] = decision.level;
+      if (!decision.isNewWarning) return;
+      next = State.makeNote(next, describeSupplyWarning(kind, decision.level, daysLeft, forecast.legDays, forecast.destination), decision.level === 3 ? 'danger' : 'stop');
+    });
+    return { ...next, supplyWarning: levels };
+  }
+
+  const isAnimalLossExplained = (entries) => entries.some((entry) => /pack animal/.test(entry.text));
+
+  /**
+   * Everything that must stop the game, comparing two states. Returns [{tone, text}], tone 'danger', 'warning' or 'info'.
+   * 'info' (recoveries) is returned for the log but callers must not pause for it.
+   * Stop-level news comes from three places: people and animals getting ill, weak or lost (compared here), log lines
+   * marked 'stop' or 'danger' (robbery, hunger, desertion...), and cargo condition passing a threshold.
+   * @param {{ignoreAnimalLoss?:boolean}} [options]  ignoreAnimalLoss: the caller already told the player (an encounter result)
+   */
+  function detectAlerts(before, after, options) {
     const alerts = [];
     if (!before || !after || after.phase === 'ended' || before.worldSeed !== after.worldSeed) return alerts;
     const weakHp = Config.TUNING.WEAK_HP;
+    const newEntries = getNewLogEntries(before, after);
+    const flagged = newEntries.filter((entry) => entry.level === 'stop' || entry.level === 'danger');
+
     after.party.forEach((member) => {
       const old = before.party.find((item) => item.id === member.id);
       if (!old) return;
       if (old.isAlive && !member.isAlive) alerts.push({ tone: 'danger', text: `${member.name} has died (${member.cause || 'exhaustion'}).` });
-      else if (member.isAlive && !old.illness && member.illness) alerts.push({ tone: 'warning', text: `${member.name} has fallen ill with ${Config.ILLNESSES[member.illness].label.toLowerCase()}. Rest, or use medicine from the Caravan tab.` });
+      else if (member.isAlive && !old.illness && member.illness) alerts.push({ tone: 'warning', text: `${member.name} has fallen ill with ${Config.ILLNESSES[member.illness].label.toLowerCase()}. Rest, or use medicine.` });
       else if (member.isAlive && old.illness && !member.illness) alerts.push({ tone: 'info', text: `${member.name} has recovered.` });
       else if (member.isAlive && old.hp >= weakHp && member.hp < weakHp) alerts.push({ tone: 'warning', text: `${member.name} is weak (health ${Math.round(member.hp)}). Rest or ease the pace.` });
     });
+    const lossIsExplained = isAnimalLossExplained(flagged);
     before.animals.forEach((old) => {
       const now = after.animals.find((item) => item.id === old.id);
       const label = Config.ANIMALS[old.type].label.toLowerCase();
-      if (!now) alerts.push({ tone: 'danger', text: `Your ${label} has died.` });
+      if (!now) { if (!lossIsExplained && !(options && options.ignoreAnimalLoss)) alerts.push({ tone: 'danger', text: `Your ${label} has died.` }); }
       else if (old.hp >= weakHp && now.hp < weakHp) alerts.push({ tone: 'warning', text: `Your ${label} is weak and tiring. Rest, feed it, or lighten the load.` });
     });
-    return alerts;
+    flagged.forEach((entry) => alerts.push({ tone: entry.level === 'danger' ? 'danger' : 'warning', text: entry.text }));
+
+    if (before.cargo && after.cargo && after.cargo.units > 0) {
+      const crossed = Config.TUNING.CARGO_CONDITION_ALERTS.filter((threshold) => before.cargo.condition >= threshold && after.cargo.condition < threshold);
+      if (crossed.length > 0) {
+        const lowest = Math.min(...crossed);
+        alerts.push({ tone: 'warning', text: `Your ${Config.CARGO[after.cargo.id].label.toLowerCase()} is spoiling: condition is ${Math.round(after.cargo.condition * 100)}%, below ${Math.round(lowest * 100)}%. It will sell for less.` });
+      }
+    }
+    // The same sentence is never shown twice in one report.
+    return alerts.filter((alert, index) => alerts.findIndex((other) => other.text === alert.text) === index);
   }
 
   /**
@@ -918,6 +1017,6 @@
     drawWeatherFor, computeWeatherChain, getForecast, getRiverLevel, computeKosToday, estimateLegDays, computeSupplyForecast,
     getRegionBriefing, addRumours, buySupply, buyAnimal, getAnimalPrice, getHirePrice, hireService,
     getOverload, jettison, autoJettison, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
-    pickSkin, restDay, estimateRestCost, detectAlerts, resolveProvision, passCityDays, estimateStayCost, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
+    pickSkin, restDay, estimateRestCost, detectAlerts, getNewLogEntries, getDayHoldMilliseconds, getNextSupplyLevel, getSupplyBand, applySupplyWarnings, resolveProvision, passCityDays, estimateStayCost, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
   });
 })(window.Karvanyan);

@@ -123,15 +123,17 @@
 
   // ---------------------------------------------------------------------------
   // Rivers. regime picks the calendar: snow-fed rivers are high Jun-Sep, plains rivers Jul-Oct.
-  // levels by month index: 0 low, 1 normal, 2 high
+  // levels by month index: 0 low, 1 normal, 2 high (3.0: snow-fed rivers read normal in October)
   // ---------------------------------------------------------------------------
   const RIVER_REGIMES = Object.freeze({
-    snow: [0, 0, 0, 1, 1, 2, 2, 2, 2, 0, 0, 0],
+    snow: [0, 0, 0, 1, 1, 2, 2, 2, 2, 1, 0, 0],
     monsoon: [0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 1, 0],
   });
 
   const RIVERS = Object.freeze({
-    indus: { id: 'indus', name: 'the Indus', regime: 'snow', ferryPrice: 30 },
+    // The Indus at Attock is never fordable. From November to March (month indexes 10, 11, 0, 1, 2) a bridge of boats
+    // replaces the ferry; at other times the ferry runs.
+    indus: { id: 'indus', name: 'the Indus', regime: 'snow', ferryPrice: 30, isFordable: false, bridgeMonths: Object.freeze([10, 11, 0, 1, 2]) },
     jhelum: { id: 'jhelum', name: 'the Jhelum', regime: 'snow', ferryPrice: 18 },
     chenab: { id: 'chenab', name: 'the Chenab', regime: 'snow', ferryPrice: 18 },
     ravi: { id: 'ravi', name: 'the Ravi', regime: 'snow', ferryPrice: 15 },

@@ -10,8 +10,18 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '2.8.0';
+  const GAME_VERSION = '3.0.0';
   const SAVE_SCHEMA_VERSION = 2;
+
+  /** Where the game lives and where players send feedback. Change the address here if the site moves. */
+  const SITE = Object.freeze({ DISPLAY_ADDRESS: 'bishwamc.github.io/karvanyan', FULL_ADDRESS: 'https://bishwamc.github.io/karvanyan/' });
+  const FEEDBACK = Object.freeze({ FORM_URL: 'https://forms.gle/QfyiBm25SKZhvw5v5' });
+
+  /**
+   * Anonymous play statistics (GoatCounter). Leave GOATCOUNTER_CODE as null and nothing is ever sent.
+   * To switch counting on, put the site code here, e.g. 'karvanyan' for https://karvanyan.goatcounter.com.
+   */
+  const ANALYTICS = Object.freeze({ GOATCOUNTER_CODE: null });
 
   const STORAGE_KEYS = Object.freeze({
     SAVE: 'karvanyan.save.v2', GRAVES: 'karvanyan.graves.v1', TOP_SCORES: 'karvanyan.top.v2', LOCAL_STATS: 'karvanyan.local-stats.v1',
@@ -143,7 +153,11 @@
   });
 
   const TUNING = Object.freeze({
-    DAY_DURATION_MILLISECONDS: 1400,
+    // Day tempo (3.0): quiet days run at a fixed pace; a day that leaves readable news stays on screen longer.
+    QUIET_DAY_MILLISECONDS: 1800, READING_MILLISECONDS_PER_WORD: 250, MAX_DAY_MILLISECONDS: 6000,
+    // Warnings (3.0): supplies warn when they first fall below enough for the leg, then 2 days, then 0.
+    // A warning re-arms only after supplies recover this many days above its level.
+    SUPPLY_WARNING_SOON_DAYS: 2, SUPPLY_WARNING_REARM_DAYS: 2, CARGO_CONDITION_ALERTS: Object.freeze([0.9, 0.75, 0.5]),
     GRAZE_SHARE: Object.freeze({ none: 0, scarce: 0.2, ok: 0.45, plentiful: 0.65 }),
     FEED_PRICE_MULT: Object.freeze({ none: 3, scarce: 2, ok: 1, plentiful: 0.6 }),
     SARAI_CHANCE: Object.freeze({ none: 0, sparse: 0.25, regular: 0.5, dense: 0.95 }),
@@ -166,6 +180,32 @@
     // Ambushes are daytime robbery; wildlife and flood are the disasters the threat table already described.
     ROAD_AMBUSH_CHANCE: 0.015, GUARD_ROAD_DETERRENCE: 0.35,
     ROAD_WILDLIFE_CHANCE: 0.008, ROAD_FLOOD_CHANCE: 0.02,
+  });
+
+  /**
+   * River crossings (3.0). Every number the crossing balance depends on lives here so it can be tuned in one place.
+   * Risks are chances (0-1) per crossing; null means the option is not offered at that water level.
+   * The balance rules in tests/crossing-balance.test.mjs decide whether these values are acceptable.
+   */
+  const CROSSING = Object.freeze({
+    FERRY_ONE_TRIP_CARGO_LOSS: Object.freeze({ low: 0.02, normal: 0.04, high: 0.1, flood: null }),
+    FERRY_TWO_TRIP_CARGO_LOSS: Object.freeze({ low: 0.01, normal: 0.02, high: 0.05, flood: 0.1 }),
+    FERRY_PREMIUM_RISK_REDUCTION: 0.03,
+    FORD_ANIMAL_LOSS: Object.freeze({ low: 0.03, normal: 0.2, high: null, flood: null }),
+    SWIM_ANIMAL_LOSS: Object.freeze({ low: 0.12, normal: 0.3, high: 0.5, flood: null }),
+    LEVEL_PRICE_FACTOR: Object.freeze({ low: 1, normal: 1, high: 1.5, flood: 2 }),
+    WAIT_DAYS_FOR_LEVEL: Object.freeze({ low: 0, normal: 2, high: 3, flood: 4 }),
+    // The ferry fee grows with the number of animals: base x (FEE_BASE_FACTOR + FEE_PER_ANIMAL x animals).
+    FEE_BASE_FACTOR: 0.5, FEE_PER_ANIMAL: 0.1,
+    // A one-trip ferry may queue at the landing. Premium and two-trip crossings skip the queue.
+    FERRY_QUEUE_MAX_DAYS: 2,
+    BRIDGE_TOLL_FACTOR: 0.6, BRIDGE_CARGO_LOSS: 0.01,
+    // Fording or swimming always soaks the load. Covers cut the damage to these fractions.
+    SOAK_WET_MULTIPLIER: 4, COVERS_DAMAGE_FACTOR: 0.2,
+    SOAK_RATION_LOSS_RANGE: Object.freeze([0.05, 0.1]),
+    MEDICINE_RUIN_CHANCE: 0.3,
+    COLD_MONTHS: Object.freeze([10, 11, 0, 1]), COLD_FEVER_CHANCE: 0.15,
+    FERRY_SLIP_LOSS_RANGE: Object.freeze([0.1, 0.25]), FERRY_SLIP_SOAK_MULTIPLIER: 8,
   });
 
   /**
@@ -199,12 +239,12 @@
 
   const DEFAULT_SETTINGS = Object.freeze({
     textSizePercent: 100, theme: 'auto', reducedMotion: 'auto', hasScanlines: true,
-    hasAssists: false, saraiDefault: 'ask', hasSeenIntro: false,
+    hasAssists: false, saraiDefault: 'ask', hasSeenIntro: false, shareStatistics: true,
   });
 
   namespace.Config = Object.freeze({
-    GAME_VERSION, SAVE_SCHEMA_VERSION, STORAGE_KEYS, LIMITS, CANVAS, CALENDAR, PACES, RATIONS,
+    GAME_VERSION, SAVE_SCHEMA_VERSION, SITE, FEEDBACK, ANALYTICS, STORAGE_KEYS, LIMITS, CANVAS, CALENDAR, PACES, RATIONS,
     WEATHER_STATES, WEATHER, ILLNESSES, UNITS, ANIMALS, CARGO, CARGO_DEMAND_INDEX, ROLES, SERVICES,
-    PRICES, MARKET, PROVISION, TUNING, ARCHETYPES, CARGO_PRESETS, DEFAULT_SETTINGS,
+    PRICES, MARKET, PROVISION, TUNING, CROSSING, ARCHETYPES, CARGO_PRESETS, DEFAULT_SETTINGS,
   });
 })((window.Karvanyan = window.Karvanyan || {}));

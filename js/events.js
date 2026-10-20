@@ -269,16 +269,16 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Hook: river crossings (Matrix B)
+  // Hook: river crossings (Matrix B), rebuilt in 3.0
+  //
+  // Every number lives in Config.CROSSING. The rules the numbers must satisfy are tested in
+  // tests/crossing-balance.test.mjs: fording without covers must cost far more than the ferry on average,
+  // swimming more than fording, and the Indus at Attock is never fordable.
   // ---------------------------------------------------------------------------
 
-  const FERRY_LOSS = Object.freeze({ one: { low: 0.02, normal: 0.04, high: 0.1, flood: null }, two: { low: 0.01, normal: 0.02, high: 0.05, flood: 0.1 }, premiumPenalty: 0.03 });
-  const FORD_LOSS = Object.freeze({ low: 0.05, normal: 0.15, high: null, flood: null });
-  const SWIM_LOSS = Object.freeze({ low: 0.1, normal: 0.25, high: 0.5, flood: null });
-  const LEVEL_PRICE_FACTOR = Object.freeze({ low: 1, normal: 1, high: 1.5, flood: 2 });
-  const WAIT_DAYS_FOR_LEVEL = Object.freeze({ low: 0, normal: 2, high: 3, flood: 4 });
-
+  const CROSSING = Config.CROSSING;
   const LEVEL_ORDER = ['low', 'normal', 'high', 'flood'];
+  const roundToThousandth = (value) => Math.round(value * 1000) / 1000;
 
   /** Players see the exact level only with a guide or scout; otherwise a range. */
   function describeLevel(state, level) {
@@ -289,63 +289,195 @@
     return low === high ? low : `${low} to ${high}`;
   }
 
+  const getMonthIndex = (state) => State.getDate(state).getUTCMonth();
+
   function getCrossingOptions(state, pending) {
     const level = engine().getRiverLevel(state, pending.data.riverId);
     const river = World.RIVERS[pending.data.riverId];
-    const price = Math.round(river.ferryPrice * LEVEL_PRICE_FACTOR[level]);
+    const feeFactor = CROSSING.FEE_BASE_FACTOR + CROSSING.FEE_PER_ANIMAL * state.animals.length;
+    const price = Math.max(1, Math.round(river.ferryPrice * CROSSING.LEVEL_PRICE_FACTOR[level] * feeFactor));
     const knowledge = state.codex.includes('att_water') ? 0.02 : 0;
-    return { level, price, knowledge, river };
+    const monthIndex = getMonthIndex(state);
+    return {
+      level, price, knowledge, river,
+      hasBridge: Boolean(river.bridgeMonths && river.bridgeMonths.includes(monthIndex)),
+      bridgePrice: Math.max(1, Math.round(river.ferryPrice * CROSSING.BRIDGE_TOLL_FACTOR * feeFactor)),
+      isFordable: river.isFordable !== false,
+      isColdSeason: CROSSING.COLD_MONTHS.includes(monthIndex),
+      isCovered: state.supplies.covers > 0,
+    };
   }
 
+  /** Chance of losing an animal when fording or swimming. Knowledge lowers it; handlers and Uzbek animal-sense apply once. */
+  function getAnimalLossChance(state, table, level, knowledge) {
+    if (table[level] === null) return null;
+    const mods = State.getModifiers(state);
+    return Math.max(0, table[level] - knowledge) * State.getMod(mods, 'animalLossMult', 1);
+  }
+
+  const percentText = (value) => `${Math.round(value * 100)}%`;
+
   function buildCrossingChoices(state, pending) {
-    const { level, price, knowledge } = getCrossingOptions(state, pending);
+    const options = getCrossingOptions(state, pending);
+    const { level, price, knowledge, hasBridge, bridgePrice, isFordable, isCovered } = options;
     const lossText = (value) => (value === null ? null : `${Math.max(0, Math.round((value - knowledge) * 100))}% cargo loss`);
+    const affordable = (cost) => (state.money >= cost ? null : 'Not enough rupees.');
     const choices = [];
-    if (FERRY_LOSS.one[level] !== null) choices.push({ id: 'ferry', label: 'Ferry, one trip', tone: 'safe', chips: [`-${price} rupees`, lossText(FERRY_LOSS.one[level])], reason: state.money >= price ? null : 'Not enough rupees.' });
-    if (FERRY_LOSS.two[level] !== null) choices.push({ id: 'ferry2', label: 'Ferry, cargo split in two trips', tone: 'safe', chips: [`-${price * 2} rupees`, '+1 day', lossText(FERRY_LOSS.two[level])], reason: state.money >= price * 2 ? null : 'Not enough rupees.' });
-    if (!state.flags[`premium_${pending.data.key}`] && FERRY_LOSS.one[level] !== null) choices.push({ id: 'premium', label: 'Pay a premium to cross first', tone: 'safe', chips: [`-${price * 2} rupees`, 'less risk'], reason: state.money >= price * 2 ? null : 'Not enough rupees.' });
-    if (level !== 'low') choices.push({ id: 'wait', label: 'Wait for the water to fall', tone: 'safe', chips: [`${WAIT_DAYS_FOR_LEVEL[level]} days`, 'food, lodging'], reason: null });
-    if (FORD_LOSS[level] !== null) choices.push({ id: 'ford', label: 'Ford the river with the animals', tone: 'risky', chips: ['free', `${Math.round((FORD_LOSS[level] - knowledge) * 100)}% animal loss`], reason: null });
-    if (SWIM_LOSS[level] !== null) choices.push({ id: 'swim', label: 'Swim the animals across', tone: 'danger', chips: ['free', `${Math.round((SWIM_LOSS[level] - knowledge) * 100)}% animal loss`, 'irreversible'], reason: null });
+    if (hasBridge) {
+      choices.push({ id: 'bridge', label: 'Cross the bridge of boats', tone: 'safe', chips: [`-${bridgePrice} rupees`, lossText(CROSSING.BRIDGE_CARGO_LOSS), 'no queue'], reason: affordable(bridgePrice) });
+    } else {
+      if (CROSSING.FERRY_ONE_TRIP_CARGO_LOSS[level] !== null) choices.push({ id: 'ferry', label: 'Ferry, one trip', tone: 'safe', chips: [`-${price} rupees`, lossText(CROSSING.FERRY_ONE_TRIP_CARGO_LOSS[level]), `may queue 0 to ${CROSSING.FERRY_QUEUE_MAX_DAYS} days`], reason: affordable(price) });
+      if (CROSSING.FERRY_TWO_TRIP_CARGO_LOSS[level] !== null) choices.push({ id: 'ferry2', label: 'Ferry, cargo split in two trips', tone: 'safe', chips: [`-${price * 2} rupees`, '+1 day', lossText(CROSSING.FERRY_TWO_TRIP_CARGO_LOSS[level])], reason: affordable(price * 2) });
+      if (!state.flags[`premium_${pending.data.key}`] && CROSSING.FERRY_ONE_TRIP_CARGO_LOSS[level] !== null) choices.push({ id: 'premium', label: 'Pay a premium to cross first', tone: 'safe', chips: [`-${price * 2} rupees`, 'no queue', 'less risk'], reason: affordable(price * 2) });
+    }
+    if (level !== 'low') choices.push({ id: 'wait', label: 'Wait for the water to fall', tone: 'safe', chips: [`${CROSSING.WAIT_DAYS_FOR_LEVEL[level]} days`, 'food, lodging'], reason: null });
+    const soakChip = isCovered ? 'covers protect the load' : 'soaks cargo, food and medicine';
+    const fordChance = isFordable ? getAnimalLossChance(state, CROSSING.FORD_ANIMAL_LOSS, level, knowledge) : null;
+    if (fordChance !== null) choices.push({ id: 'ford', label: 'Ford the river with the animals', tone: 'risky', chips: ['free', `${percentText(fordChance)} risk of losing an animal`, soakChip], reason: null });
+    const swimChance = getAnimalLossChance(state, CROSSING.SWIM_ANIMAL_LOSS, level, knowledge);
+    if (swimChance !== null) choices.push({ id: 'swim', label: 'Swim the animals across', tone: 'danger', chips: ['free', `${percentText(swimChance)} risk of losing an animal`, soakChip, 'irreversible'], reason: null });
     return choices.map((choice) => ({ ...choice, chips: choice.chips.filter(Boolean) }));
   }
 
-  function applyCrossingCargoLoss(state, random) {
+  function applyFerrySlip(state, random) {
     if (!state.cargo || state.cargo.units <= 0) return state;
-    const loss = Math.max(1, Math.round(state.cargo.units * (0.1 + 0.15 * random.next())));
+    const [low, high] = CROSSING.FERRY_SLIP_LOSS_RANGE;
+    const loss = Math.max(1, Math.round(state.cargo.units * (low + (high - low) * random.next())));
     const fragile = Config.CARGO[state.cargo.id].fragile.wet;
-    return { ...state, cargo: { units: Math.max(0, state.cargo.units - loss), id: state.cargo.id, condition: Math.max(0, state.cargo.condition - fragile * 8) } };
+    return { ...state, cargo: { units: Math.max(0, state.cargo.units - loss), id: state.cargo.id, condition: Math.max(0, roundToThousandth(state.cargo.condition - fragile * CROSSING.FERRY_SLIP_SOAK_MULTIPLIER)) } };
+  }
+
+  /**
+   * Fording or swimming always soaks the load. Covers cut the damage and save the rations.
+   * Order of random draws (kept stable so seeded tests agree): rations, then medicine unit by unit.
+   */
+  function soakLoad(state, random, isCovered) {
+    const damageFactor = isCovered ? CROSSING.COVERS_DAMAGE_FACTOR : 1;
+    let next = state;
+    if (next.cargo && next.cargo.units > 0) {
+      const fragile = Config.CARGO[next.cargo.id].fragile.wet;
+      next = { ...next, cargo: { ...next.cargo, condition: Math.max(0, roundToThousandth(next.cargo.condition - fragile * CROSSING.SOAK_WET_MULTIPLIER * damageFactor)) } };
+    }
+    if (!isCovered) {
+      const [low, high] = CROSSING.SOAK_RATION_LOSS_RANGE;
+      const fraction = low + (high - low) * random.next();
+      next = State.adjustResources(next, { rations: -State.roundToTenth(next.supplies.rations * fraction) });
+    }
+    let ruined = 0;
+    for (let unit = 0; unit < next.supplies.medicine; unit += 1) if (random.chance(CROSSING.MEDICINE_RUIN_CHANCE * damageFactor)) ruined += 1;
+    return ruined > 0 ? State.adjustResources(next, { medicine: -ruined }) : next;
+  }
+
+  /** In the cold months a wet crossing can bring on fever. */
+  function applyColdFever(state, random) {
+    let next = state;
+    State.getLivingIndices(state).forEach((index) => {
+      if (random.chance(CROSSING.COLD_FEVER_CHANCE)) next = State.makeMemberSick(next, state.party[index].id, 'fever');
+    });
+    return next;
+  }
+
+  /** A lost animal takes its share of the load with it: cargo and food in proportion, medicine and covers by chance. */
+  function removeLoadShare(state, share, random) {
+    let next = state;
+    if (next.cargo && next.cargo.units > 0) next = { ...next, cargo: { ...next.cargo, units: Math.max(0, next.cargo.units - Math.round(next.cargo.units * share)) } };
+    next = State.adjustResources(next, { rations: -State.roundToTenth(next.supplies.rations * share), feeds: -State.roundToTenth(next.supplies.feeds * share) });
+    let lostMedicine = 0;
+    let lostCovers = 0;
+    for (let unit = 0; unit < next.supplies.medicine; unit += 1) if (random.chance(share)) lostMedicine += 1;
+    for (let unit = 0; unit < next.supplies.covers; unit += 1) if (random.chance(share)) lostCovers += 1;
+    return State.adjustResources(next, { medicine: -lostMedicine, covers: -lostCovers });
+  }
+
+  const plural = (count, singular, pluralForm) => `${count} ${count === 1 ? singular : (pluralForm || `${singular}s`)}`;
+
+  /** Says exactly what a crossing changed, by comparing the state before and after. Never claims a loss that did not happen. */
+  function describeCrossingLosses(before, after) {
+    const parts = [];
+    before.animals.filter((animal) => !after.animals.some((item) => item.id === animal.id))
+      .forEach((animal) => parts.push(`you lose a ${Config.ANIMALS[animal.type].label.toLowerCase()}`));
+    const lostLots = (before.cargo ? before.cargo.units : 0) - (after.cargo ? after.cargo.units : 0);
+    if (lostLots > 0) parts.push(`${plural(lostLots, 'lot')} of cargo are gone`);
+    if (before.cargo && after.cargo && before.cargo.units > 0 && before.cargo.condition - after.cargo.condition >= 0.01) {
+      parts.push(`the ${Config.CARGO[after.cargo.id].label.toLowerCase()} is soaked, condition ${Math.round(before.cargo.condition * 100)}% to ${Math.round(after.cargo.condition * 100)}%`);
+    }
+    const lostRations = Math.round(before.supplies.rations - after.supplies.rations);
+    if (lostRations >= 1) parts.push(`${plural(lostRations, 'ration')} spoil`);
+    const lostFeeds = Math.round(before.supplies.feeds - after.supplies.feeds);
+    if (lostFeeds >= 1) parts.push(`${plural(lostFeeds, 'feed')} lost`);
+    const lostMedicine = before.supplies.medicine - after.supplies.medicine;
+    if (lostMedicine >= 1) parts.push(`${lostMedicine} medicine ruined`);
+    const lostCovers = before.supplies.covers - after.supplies.covers;
+    if (lostCovers >= 1) parts.push(`${plural(lostCovers, 'cover')} lost`);
+    after.party.forEach((member) => {
+      const old = before.party.find((item) => item.id === member.id);
+      if (old && member.isAlive && !old.illness && member.illness) parts.push(`${member.name} falls ill with ${Config.ILLNESSES[member.illness].label.toLowerCase()}`);
+    });
+    if (parts.length === 0) return '';
+    const sentence = parts.join('; ');
+    return `${sentence[0].toUpperCase()}${sentence.slice(1)}.`;
   }
 
   /** Marks the crossing complete; the day then resumes. */
   const completeCrossing = (state, pending) => ({ ...state, doneCrossings: [...state.doneCrossings, pending.data.key] });
 
+  function resolveWadeOrSwim(state, pending, choiceId, random, options) {
+    const table = choiceId === 'ford' ? CROSSING.FORD_ANIMAL_LOSS : CROSSING.SWIM_ANIMAL_LOSS;
+    // A refused ford (the Indus, or deep water) falls back to nothing: the view never offers it, but stay safe if asked.
+    if ((choiceId === 'ford' && !options.isFordable) || table[options.level] === null) return { state, message: '' };
+    let next = soakLoad(state, random, options.isCovered);
+    if (options.isColdSeason) next = applyColdFever(next, random);
+    const chance = getAnimalLossChance(state, table, options.level, options.knowledge);
+    let lead = choiceId === 'ford' ? 'The animals wade across, wet and annoyed.' : 'The animals swim across, wild-eyed.';
+    if (random.chance(chance)) {
+      const lost = State.loseAnimalByLoad(next, random);
+      if (lost.animal) {
+        next = removeLoadShare(lost.state, lost.loadShare, random);
+        lead = `The current knocks a ${Config.ANIMALS[lost.animal.type].label.toLowerCase()} off its feet.`;
+      }
+    }
+    const losses = describeCrossingLosses(state, next);
+    return { state: completeCrossing(next, pending), message: `${lead} ${losses || 'It costs you nothing this time.'}` };
+  }
+
   function resolveCrossing(state, pending, choiceId, random) {
-    const { level, price, knowledge, river } = getCrossingOptions(state, pending);
+    const options = getCrossingOptions(state, pending);
+    const { level, price, knowledge, river } = options;
     const adjust = (value) => Math.max(0, value - knowledge);
     switch (choiceId) {
+      case 'bridge': {
+        let next = State.adjustResources(state, { money: -options.bridgePrice });
+        if (random.chance(adjust(CROSSING.BRIDGE_CARGO_LOSS))) next = applyFerrySlip(next, random);
+        const losses = describeCrossingLosses(state, next);
+        return { state: completeCrossing(next, pending), message: `You cross ${river.name} on the bridge of boats. ${losses || 'Everything arrives dry.'}` };
+      }
       case 'ferry':
       case 'premium': {
         const cost = choiceId === 'premium' ? price * 2 : price;
         let next = State.adjustResources(state, { money: -cost });
-        const risk = Math.max(0, adjust(FERRY_LOSS.one[level]) - (choiceId === 'premium' ? FERRY_LOSS.premiumPenalty : 0));
+        const risk = Math.max(0, adjust(CROSSING.FERRY_ONE_TRIP_CARGO_LOSS[level]) - (choiceId === 'premium' ? CROSSING.FERRY_PREMIUM_RISK_REDUCTION : 0));
         if (choiceId === 'premium') next = State.setFlag(next, `premium_${pending.data.key}`, true);
-        if (random.chance(risk)) return { state: completeCrossing(applyCrossingCargoLoss(next, random), pending), message: `The ferry slips in the current of ${river.name}. You lose cargo but reach the bank.` };
-        return { state: completeCrossing(next, pending), message: `The ferry grinds onto the far bank of ${river.name}.` };
+        const isSlip = random.chance(risk);
+        if (isSlip) next = applyFerrySlip(next, random);
+        // Only a plain one-trip ferry queues. The premium fare crosses first.
+        const queueDays = choiceId === 'ferry' ? random.range(0, CROSSING.FERRY_QUEUE_MAX_DAYS) : 0;
+        const lead = isSlip ? `The ferry slips in the current of ${river.name}.` : `The ferry grinds onto the far bank of ${river.name}.`;
+        const losses = describeCrossingLosses(state, next);
+        const queueText = queueDays > 0 ? ` You waited ${plural(queueDays, 'day')} at the landing for your turn.` : '';
+        return { state: completeCrossing(next, pending), message: `${lead}${losses ? ` ${losses}` : ''}${queueText}`, waitDays: queueDays };
       }
       case 'ferry2': {
         let next = State.adjustResources(state, { money: -price * 2 });
-        if (random.chance(adjust(FERRY_LOSS.two[level]))) next = applyCrossingCargoLoss(next, random);
-        return { state: completeCrossing(next, pending), message: 'Two trips, two prayers. Everything arrives, one way or another.', waitDays: 1 };
+        if (random.chance(adjust(CROSSING.FERRY_TWO_TRIP_CARGO_LOSS[level]))) next = applyFerrySlip(next, random);
+        const losses = describeCrossingLosses(state, next);
+        return { state: completeCrossing(next, pending), message: `Two trips, two prayers. ${losses || 'Everything arrives.'} The second trip costs you a day.`, waitDays: 1 };
       }
       case 'ford':
       case 'swim': {
-        const risk = adjust((choiceId === 'ford' ? FORD_LOSS : SWIM_LOSS)[level]);
-        let next = state;
-        if (random.chance(risk)) { next = State.loseAnimal(next, random); if (next.cargo) next = { ...next, cargo: { ...next.cargo, condition: Math.max(0, next.cargo.condition - Config.CARGO[next.cargo.id].fragile.wet * 6) } }; return { state: completeCrossing(next, pending), message: 'The current knocks animals off their feet. You lose a beast and soak the cargo.' }; }
-        return { state: completeCrossing(next, pending), message: 'The animals wade across, wet and annoyed.' };
+        const outcome = resolveWadeOrSwim(state, pending, choiceId, random, options);
+        return outcome;
       }
-      case 'wait': return { state, message: `You camp on the bank and watch ${river.name}.`, waitDays: WAIT_DAYS_FOR_LEVEL[level] || 1, keepOpen: true };
+      case 'wait': return { state, message: `You camp on the bank and watch ${river.name}.`, waitDays: CROSSING.WAIT_DAYS_FOR_LEVEL[level] || 1, keepOpen: true };
       default: return { state, message: '' };
     }
   }
@@ -408,10 +540,10 @@
       ], choices: buildTollChoices(state, pending) };
     }
     if (pending.kind === 'crossing') {
-      const { level, river } = getCrossingOptions(state, pending);
+      const { level, river, hasBridge, isFordable } = getCrossingOptions(state, pending);
       return { kind: 'crossing', id: pending.id, icon: '🌊', title: `Crossing ${pending.data.name}`, paragraphs: [
-        `The water of ${river.name} looks ${describeLevel(state, level)}. Ferrymen wait on the bank.`,
-        'Choose how to cross. A guide or scout shows the exact level.',
+        `The water of ${river.name} looks ${describeLevel(state, level)}. ${hasBridge ? 'A bridge of boats is laid across the river.' : 'Ferrymen wait on the bank.'}`,
+        `Choose how to cross. A guide or scout shows the exact level.${isFordable ? '' : ' Nobody fords this river with loaded animals.'}`,
       ], choices: buildCrossingChoices(state, pending) };
     }
     if (pending.kind === 'night') return { kind: 'night', icon: '🌙', title: 'Where do you sleep tonight?', paragraphs: ['A sarai is close. A camp costs nothing but the weather.'], choices: nightChoices(state) };
@@ -507,6 +639,6 @@
 
   namespace.Events = Object.freeze({
     meets, describeEffects, applyEffects, getStorylet, findDilemma, pickRoadStorylet, queueArrival,
-    getTollContext, getView, choose, resume, isPendingValid, STORYLETS: Content.STORYLETS, getCrossingOptions, describeLevel,
+    getTollContext, getView, choose, resume, isPendingValid, STORYLETS: Content.STORYLETS, getCrossingOptions, describeLevel, resolveCrossing, buildCrossingChoices,
   });
 })(window.Karvanyan);

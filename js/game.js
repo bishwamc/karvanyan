@@ -245,16 +245,32 @@
   let provisionSession = null;
   let lastFrameTimestamp = null;
   let millisecondsIntoDay = 0;
+  // How long the current day stays on screen. Quiet days use the fixed pace; a day with readable news holds longer.
+  let currentDayMilliseconds = Config.TUNING.QUIET_DAY_MILLISECONDS;
+  // The state just before an encounter choice, so the news from that choice can open the decision sheet afterwards.
+  let stateBeforeChoice = null;
   let autosaveTimer = null;
   let hasRecordedEnding = false;
-  let isCaravanPanelOpen = false;
+  // On a wide screen the caravan panel is shown open; on a phone it starts folded away.
+  let isCaravanPanelOpen = typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
   let openingStep = 0;
   let openingDraft = null;
   let openingSeed = 1;
   // Journey map waiting to be shown (entering a region, or the end of a run). Shown once no dialog is open.
   let deferredMap = null;
   // Outside services (counters, scoreboard) go through this seam. Local-only today; see js/services.js.
-  const services = namespace.Services.createServices();
+  // Anonymous counts go out only if a GoatCounter code is set in config.js and the player has not turned them off.
+  const analyticsRemote = namespace.Analytics && Config.ANALYTICS.GOATCOUNTER_CODE
+    ? namespace.Analytics.createGoatCounterRemote({ code: Config.ANALYTICS.GOATCOUNTER_CODE, isEnabled: () => settings.shareStatistics !== false })
+    : null;
+  const services = namespace.Services.createServices({ remote: analyticsRemote });
+
+  /** Counts one anonymous event. Every value must be on the fixed lists in analytics.js, or nothing is sent. */
+  function trackEvent(kind, ...segments) {
+    if (!namespace.Analytics) return;
+    const path = namespace.Analytics.buildEventPath(kind, ...segments);
+    if (path) services.trackEvent(path);
+  }
 
   const options = () => ({ saraiPolicy: settings.saraiDefault });
 
@@ -361,24 +377,40 @@
     State.clearSavedGame();
     State.recordTopScore(gameState);
     services.recordJourneyEnd({ stopId: gameState.nodeId });
+    trackEvent('end', gameState.outcome && gameState.outcome.type === 'arrived' ? 'arrived' : 'died');
   }
 
-  /** Adopts a state, handles endings and autosave, then redraws. */
+  /** Counts arrivals and deaths by comparing the state before and after a move. */
+  function trackProgress(previousState, nextState) {
+    if (!previousState || previousState.worldSeed !== nextState.worldSeed) return;
+    if (nextState.phase === 'stop' && previousState.nodeId !== nextState.nodeId) trackEvent('stop', nextState.nodeId);
+    nextState.party.forEach((member) => {
+      const before = previousState.party.find((item) => item.id === member.id);
+      if (before && before.isAlive && !member.isAlive) trackEvent('death', namespace.Analytics ? namespace.Analytics.normaliseDeathCause(member.cause) : 'other', nextState.nodeId);
+    });
+  }
+
+  /**
+   * Adopts a state, handles endings and autosave, then redraws.
+   * News that stops the game opens the decision sheet. Recoveries never do: they only go in the log.
+   */
   function commitState(nextState, opts) {
     const shouldRender = !opts || opts.shouldRender !== false;
     const shouldSave = !opts || opts.shouldSave !== false;
     const shouldAlert = (!opts || opts.shouldAlert !== false) && shouldRender;
     const previousState = gameState;
     gameState = nextState;
+    trackProgress(previousState, gameState);
     if (gameState.phase === 'ended') handleJourneyEnded();
     else if (shouldSave) scheduleAutosave();
     queueJourneyMaps(previousState, gameState);
     if (shouldRender) renderCurrent();
-    // Illness, weakness and deaths open a report. Selling, buying and treating never do.
     if (shouldAlert && previousState && gameState.phase !== 'ended') {
-      const alerts = Engine.detectAlerts(previousState, gameState);
-      if (alerts.length > 0) UI().openReport(alerts);
+      const alerts = Engine.detectAlerts(previousState, gameState).filter((alert) => alert.tone !== 'info');
+      if (alerts.length > 0) UI().openReport(alerts, null, gameState);
     }
+    // An open decision sheet always shows the latest numbers (after Treat, a pace change, a purchase).
+    if (UI().isReportOpen()) UI().refreshReport(gameState);
     // Last, so the journey map waits behind any report or dialog that this move opened.
     offerDeferredMap();
   }
@@ -387,8 +419,11 @@
 
   function advanceOneDay() {
     const before = gameState.dayIndex;
+    const previousState = gameState;
     const next = Engine.advanceDay(gameState, randomSource, options());
     const arrived = next.phase === 'stop';
+    // The next day waits long enough to read any ordinary news this day left. Stops open the decision sheet instead.
+    currentDayMilliseconds = Engine.getDayHoldMilliseconds(Engine.getNewLogEntries(previousState, next));
     commitState(next);
     if (arrived) saveNow();
     else if (next.dayIndex !== before && next.dayIndex % AUTOSAVE_EVERY_N_TRAVEL_DAYS === 0) scheduleAutosave();
@@ -404,7 +439,7 @@
     if (canvas.isConnected) UI().renderRoadFrame(gameState, timestamp / 1000, !isTicking || isReducedMotion());
     if (!isTicking) return;
     millisecondsIntoDay += delta;
-    if (millisecondsIntoDay >= Config.TUNING.DAY_DURATION_MILLISECONDS) { millisecondsIntoDay = 0; advanceOneDay(); }
+    if (millisecondsIntoDay >= currentDayMilliseconds) { millisecondsIntoDay = 0; advanceOneDay(); }
   }
 
   // ---- provisioning ----------------------------------------------------------
@@ -502,6 +537,8 @@
     deferredMap = null;
     millisecondsIntoDay = 0;
     services.recordJourneyStart({ archetypeId: setup.archetypeId });
+    trackEvent('start', setup.archetypeId, { 8: 'sep', 9: 'oct', 10: 'nov' }[setup.startMonthIndex]);
+    currentDayMilliseconds = Config.TUNING.QUIET_DAY_MILLISECONDS;
     renderCurrent();
     saveNow();
   }
@@ -516,6 +553,7 @@
     hasRecordedEnding = false;
     deferredMap = null;
     millisecondsIntoDay = 0;
+    currentDayMilliseconds = Config.TUNING.QUIET_DAY_MILLISECONDS;
     renderCurrent();
   }
 
@@ -606,10 +644,11 @@
     openingScout(argument) { draftUpdate({ scout: argument === 'yes' }); },
     openingReason(argument) { draftUpdate({ subplotId: argument }); },
     openingSkip() {
+      trackEvent('intro', 'skipped');
       const last = State.loadLastSetup();
       beginJourneyFromDraft(last ? { ...defaultDraft(), ...last } : { ...openingDraft, candidateIds: openingDraft.candidateIds });
     },
-    openingFinish() { beginJourneyFromDraft(openingDraft); },
+    openingFinish() { trackEvent('intro', 'finished'); beginJourneyFromDraft(openingDraft); },
 
     // sheets
     openCodex() { UI().openCodex(gameState); },
@@ -622,6 +661,12 @@
     toggleReducedMotion() { settings = { ...settings, reducedMotion: settings.reducedMotion === 'on' ? 'auto' : 'on' }; applyAndPersistSettings(); reopenSettingsSheet(); },
     toggleScanlines() { settings = { ...settings, hasScanlines: !settings.hasScanlines }; applyAndPersistSettings(); reopenSettingsSheet(); },
     toggleAssists() { settings = { ...settings, hasAssists: !settings.hasAssists }; applyAndPersistSettings(); reopenSettingsSheet(); },
+    toggleShareStatistics() { settings = { ...settings, shareStatistics: settings.shareStatistics === false }; applyAndPersistSettings(); reopenSettingsSheet(); },
+
+    // feedback
+    openFeedback() { trackEvent('feedback-open'); },
+    rateEnjoyment(argument) { trackEvent('rating', argument); UI().showRatingThanks('Thank you. Your answer was counted anonymously.'); },
+    rateLearning(argument) { trackEvent('learned', argument); UI().showRatingThanks('Thank you. Your answer was counted anonymously.'); },
     exportSave() { downloadSaveFile(); },
     importSave(argument, source) { importSaveFile(source); },
     confirmResetSave() { UI().confirmAction({ title: 'Reset saved game?', message: 'This deletes your saved run on this device. Graves and scores are kept.', confirmLabel: 'Delete my save', action: 'resetSave' }); },
@@ -652,13 +697,17 @@
     treatMember(argument) {
       const treatment = State.treatMember(gameState, argument, randomSource);
       if (!treatment.wasPerformed) { UI().showNotice('No medicine, or nobody to treat.', 'warning'); return; }
+      const message = treatment.wasCured ? 'The medicine works.' : 'The medicine does not cure them this time.';
+      UI().setReportNotice(message, treatment.wasCured ? 'info' : 'warning');
       commitState(treatment.state, { shouldAlert: false });
-      UI().showNotice(treatment.wasCured ? 'The medicine works.' : 'The medicine does not cure them this time.', treatment.wasCured ? 'info' : 'warning');
+      UI().showNotice(message, treatment.wasCured ? 'info' : 'warning');
     },
 
     // moving and resting
     setOut() { commitState(Engine.beginLeg(gameState)); saveNow(); },
     restDay() { commitState(Engine.restDay(gameState, randomSource, options())); },
+    /** "Rest here" on the decision sheet: close the sheet first, so the rest's own news opens a fresh one. */
+    reportRest() { UI().closeTopSheet(); ACTIONS.restDay(); },
     setRestDays(argument) { UI().setRestDays(Number(argument)); renderCurrent(); },
     /** Rests up to N days in a city. Stops early if someone falls ill or dies, or an event needs a decision. */
     restMany(argument) {
@@ -671,10 +720,10 @@
         state = next;
         if (state.pending || state.phase !== 'stop' || news.length > 0) break;
       }
-      const alerts = Engine.detectAlerts(gameState, state);
+      const alerts = Engine.detectAlerts(gameState, state).filter((alert) => alert.tone !== 'info');
       const daysRested = state.dayIndex - gameState.dayIndex;
       commitState(state, { shouldAlert: false });
-      if (alerts.length > 0) UI().openReport(alerts, daysRested < days ? `You rested ${daysRested} of ${days} days.` : null);
+      if (alerts.length > 0) UI().openReport(alerts, daysRested < days ? `You rested ${daysRested} of ${days} days.` : null, gameState);
       else if (state.phase === 'stop') UI().showNotice(`You rested ${daysRested} ${daysRested === 1 ? 'day' : 'days'}.`, 'info');
     },
     togglePause() { commitState(State.patchState(gameState, { isPaused: !gameState.isPaused })); },
@@ -687,13 +736,24 @@
     // encounters
     chooseEncounter(argument) {
       const previousView = Events.getView(gameState);
+      if (gameState.pending && gameState.pending.kind === 'crossing') trackEvent('cross', gameState.pending.data.riverId, argument);
+      stateBeforeChoice = gameState;
       const outcome = Events.choose(gameState, argument, randomSource, options());
       if (!outcome) return;
       commitState(outcome.state, { shouldRender: false });
       if (outcome.state.phase === 'ended') { UI().closePending(); UI().showEnd(gameState); offerDeferredMap(); return; }
       UI().showPending(gameState, { resultMessage: outcome.message, referenceView: previousView });
     },
-    encounterContinue() { UI().closePending(); renderCurrent(); },
+    encounterContinue() {
+      UI().closePending();
+      renderCurrent();
+      // The result dialog has told the story; the decision sheet now shows what it left behind (illness, weakness, hunger).
+      if (stateBeforeChoice && gameState && gameState.phase !== 'ended') {
+        const alerts = Engine.detectAlerts(stateBeforeChoice, gameState, { ignoreAnimalLoss: true }).filter((alert) => alert.tone !== 'info');
+        if (alerts.length > 0) UI().openReport(alerts, null, gameState);
+      }
+      stateBeforeChoice = null;
+    },
   };
 
   /**
@@ -729,6 +789,8 @@
     document.addEventListener('visibilitychange', pauseAndSaveWhenHidden);
     window.addEventListener('pagehide', saveNow);
     showTitleScreen();
+    if (analyticsRemote) analyticsRemote.trackPageview();
+    if (namespace.Analytics) trackEvent('device', namespace.Analytics.classifyDevice(window.innerWidth));
     requestAnimationFrame(onAnimationFrame);
   }
 

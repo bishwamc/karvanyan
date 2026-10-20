@@ -12,7 +12,7 @@
 
   // The key lives in Config.STORAGE_KEYS when config.js has loaded; the literal is a fallback for tests.
   const LOCAL_KEY = (namespace.Config && namespace.Config.STORAGE_KEYS && namespace.Config.STORAGE_KEYS.LOCAL_STATS) || 'karvanyan.local-stats.v1';
-  const METHOD_NAMES = Object.freeze(['recordJourneyStart', 'recordJourneyEnd', 'getPublicStats', 'submitScore']);
+  const METHOD_NAMES = Object.freeze(['recordJourneyStart', 'recordJourneyEnd', 'getPublicStats', 'submitScore', 'trackEvent']);
 
   const emptyStats = () => ({ journeysStarted: 0, journeysEnded: 0 });
 
@@ -59,6 +59,10 @@
       },
       /** Not configured in this build. Returns a status instead of pretending to submit. */
       submitScore() {
+        return Promise.resolve({ ok: false, reason: 'not-configured' });
+      },
+      /** Anonymous event counting needs a remote adapter (see analytics.js). Locally it does nothing. */
+      trackEvent() {
         return Promise.resolve({ ok: false, reason: 'not-configured' });
       },
     });

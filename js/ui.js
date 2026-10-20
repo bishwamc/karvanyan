@@ -32,6 +32,9 @@
   let activeStopTab = 'town';
   let travelCanvasElement = null;
   const modalStack = [];
+  /** The open decision sheet, if any: its handle, the news it lists, and the latest state it shows. */
+  const reportSheet = { handle: null, alerts: [], extraText: '', state: null, notice: null };
+  let radioGroupCounter = 0;
   let encounterModal = null;
   let savedIndicatorTimer = null;
 
@@ -118,6 +121,24 @@
     ]);
   }
 
+  /** A link that opens the Google Form in a new tab. It also reports 'openFeedback' so the click can be counted. */
+  function createFeedbackLink(testId) {
+    return createElement('a', {
+      className: 'button button--secondary', href: Config.FEEDBACK.FORM_URL, target: '_blank', rel: 'noopener noreferrer',
+      text: 'Send feedback (opens a form)', dataset: { action: 'openFeedback', testid: testId },
+    });
+  }
+
+  /** The footer on every screen: name, version, official address and the feedback link. Text only, no scripts. */
+  function renderSiteFooter(rootElement) {
+    const footer = rootElement.querySelector('#site-footer');
+    if (!footer) return;
+    footer.replaceChildren(
+      createElement('span', { text: `K\u0101rv\u0101ny\u0101n of Sadak-e-Azam \u00b7 version ${Config.GAME_VERSION} \u00b7 ${Config.SITE.DISPLAY_ADDRESS} \u00b7 ` }),
+      createElement('a', { className: 'site-footer__link', href: Config.FEEDBACK.FORM_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Send feedback', dataset: { action: 'openFeedback', testid: 'footer-feedback' } }),
+    );
+  }
+
   function createParagraphs(texts) {
     return texts.map((text) => createElement('p', { className: 'paragraph', text }));
   }
@@ -134,6 +155,7 @@
     const modalRootElement = document.getElementById('modal-root');
     if (!screenElement || !modalRootElement) throw new Error('Karvanyan: missing #screen or #modal-root in index.html');
     context = { rootElement: options.rootElement, screenElement, modalRootElement, onAction: options.onAction };
+    renderSiteFooter(options.rootElement);
 
     document.addEventListener('click', (event) => {
       const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
@@ -234,8 +256,23 @@
     context.modalRootElement.appendChild(backdropElement);
     setContent(options.build, options.title, options.icon);
 
+    /**
+     * Rebuilds the body in place without moving focus to the top: used by the decision sheet so that
+     * treating someone or changing pace updates the numbers while keyboard focus stays where it was.
+     */
+    function refresh(build) {
+      const focusKey = document.activeElement && bodyElement.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
+      const scrollTop = dialogElement.scrollTop;
+      bodyElement.replaceChildren();
+      build(bodyElement);
+      dialogElement.scrollTop = scrollTop;
+      const target = focusKey ? Array.from(bodyElement.querySelectorAll('[data-focus-key]')).find((element) => element.dataset.focusKey === focusKey && !element.disabled) : null;
+      (target || titleElement).focus({ preventScroll: true });
+    }
+
     return {
       setContent,
+      refresh,
       close() {
         const position = modalStack.indexOf(entry);
         if (position === -1) return;
@@ -265,10 +302,13 @@
   /** Closes the most recent dismissible sheet. Encounter dialogs are never closed this way. */
   function closeTopSheet() {
     const handle = sheetHandles.pop();
+    if (handle === reportSheet.handle) { reportSheet.handle = null; reportSheet.notice = null; }
     if (handle) handle.close();
   }
 
   function closeAllModals() {
+    reportSheet.handle = null;
+    reportSheet.notice = null;
     while (sheetHandles.length > 0) sheetHandles.pop().close();
     if (encounterModal) { encounterModal.close(); encounterModal = null; }
   }
@@ -664,9 +704,77 @@
     return createElement('header', { className: 'hud' }, children);
   }
 
+  /**
+   * A real radio group drawn as segmented buttons: arrow keys move between options, screen readers announce
+   * the group and the selected option, and a change reports `action` with the option id. Radios need a
+   * group name that is unique on the page, because a decision sheet and the screen behind it can both show one.
+   * @param {Array<{id:string, label:string}>} items
+   * @param {string|null} selectedId  null leaves every option unselected
+   */
+  function createRadioGroup(legend, items, selectedId, action, testIdPrefix, helpText) {
+    radioGroupCounter += 1;
+    const groupName = `${testIdPrefix}-group-${radioGroupCounter}`;
+    const helpId = `${groupName}-help`;
+    const segments = items.map((item) => createElement('label', { className: 'segment' }, [
+      createElement('input', {
+        className: 'segment__input', type: 'radio', name: groupName, value: item.id, checked: item.id === selectedId ? true : undefined,
+        dataset: { changeAction: action, testid: `${testIdPrefix}-${item.id}`, focusKey: `${testIdPrefix}-${item.id}` },
+      }),
+      createElement('span', { className: 'segment__label', text: item.label }),
+    ]));
+    return createElement('fieldset', { className: 'stepper', 'aria-describedby': helpText ? helpId : undefined }, [
+      createElement('legend', { className: 'stepper__legend', text: legend }),
+      createElement('div', { className: 'segments' }, segments),
+      helpText ? createElement('p', { className: 'stepper__help', id: helpId, text: helpText }) : null,
+    ]);
+  }
+
+  /** Pace and ration choices: a radio group whose help text describes the selected option. */
   function createStepper(legend, options, selectedId, action, testIdPrefix) {
-    const buttons = Object.values(options).map((option) => createButton({ label: option.label, action, argument: option.id, testId: `${testIdPrefix}-${option.id}`, variant: option.id === selectedId ? 'primary' : 'secondary', isPressed: option.id === selectedId }));
-    return createElement('fieldset', { className: 'stepper' }, [createElement('legend', { className: 'stepper__legend', text: legend }), createElement('div', { className: 'stepper__buttons' }, buttons), createElement('p', { className: 'stepper__help', text: options[selectedId].help })]);
+    return createRadioGroup(legend, Object.values(options).map((option) => ({ id: option.id, label: option.label })), selectedId, action, testIdPrefix, options[selectedId].help);
+  }
+
+  const getWeakHp = () => Config.TUNING.WEAK_HP;
+
+  /** One short line per member, always visible on the road: name, exact health, illness. */
+  function createPartyStrip(state) {
+    const items = state.party.map((member) => {
+      const isWeak = member.isAlive && member.hp < getWeakHp();
+      const illness = member.isAlive && member.illness ? ` ${Config.ILLNESSES[member.illness].label.toLowerCase()}` : (isWeak ? ' weak' : '');
+      const isWarning = member.isAlive && (Boolean(member.illness) || isWeak);
+      const text = member.isAlive ? `${member.name} ${Math.round(member.hp)}${illness}` : `${member.name} died`;
+      return createElement('li', { className: `party-strip__item ${isWarning ? 'party-strip__item--warning' : ''} ${member.isAlive ? '' : 'party-strip__item--dead'}`.trim(), text });
+    });
+    return createElement('ul', { className: 'party-strip', 'aria-label': 'Party health, exact numbers', dataset: { testid: 'party-strip' } }, items);
+  }
+
+  const dayWord = (count) => (count === 1 ? 'day' : 'days');
+
+  /** The exact numbers a player needs to decide: supplies with days left, cargo, animals, the next stop. */
+  function createCaravanSnapshot(state) {
+    const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
+    const forecast = edge ? Engine.computeSupplyForecast(state, edge) : null;
+    const capacity = State.getCapacity(state);
+    const load = State.getLoad(state);
+    const weakAnimals = state.animals.filter((animal) => animal.hp < getWeakHp());
+    const animalsText = state.animals.length === 0 ? 'None' : `${state.animals.length}: ${state.animals.length - weakAnimals.length} well, ${weakAnimals.length} weak${weakAnimals.length > 0 ? ` (weakest ${Math.round(Math.min(...weakAnimals.map((animal) => animal.hp)))})` : ''}`;
+    const cargoText = state.cargo && state.cargo.units > 0 ? `${state.cargo.units} lots, condition ${Math.round(state.cargo.condition * 100)}%` : 'None';
+    const rows = [
+      ['Rations', `${Math.floor(state.supplies.rations)}${forecast ? ` (about ${forecast.rationDays} ${dayWord(forecast.rationDays)})` : ''}`, forecast ? forecast.rationDays < forecast.legDays : false],
+      ['Feed', `${Math.floor(state.supplies.feeds)}${forecast ? ` (about ${forecast.feedDays} ${dayWord(forecast.feedDays)})` : ''}`, forecast ? forecast.feedDays < forecast.legDays : false],
+      ['Medicine', String(state.supplies.medicine), false],
+      ['Rupees', String(Math.floor(state.money)), false],
+      ['Cargo', cargoText, Boolean(state.cargo) && state.cargo.units > 0 && state.cargo.condition < 0.75],
+      ['Animals', animalsText, weakAnimals.length > 0],
+      ['Load', `${load} of ${capacity}`, load > capacity],
+      forecast ? ['Next stop', `${forecast.destination}, about ${forecast.legDays} ${dayWord(forecast.legDays)}`, false] : null,
+    ].filter(Boolean);
+    const list = createElement('dl', { className: 'snapshot__list', dataset: { testid: 'snapshot' } });
+    rows.forEach(([term, value, isWarning]) => {
+      list.appendChild(createElement('dt', { className: 'snapshot__term', text: term }));
+      list.appendChild(createElement('dd', { className: `snapshot__value ${isWarning ? 'snapshot__value--warning' : ''}`.trim(), text: value }));
+    });
+    return list;
   }
 
   function createPartyList(state, canTreat) {
@@ -974,41 +1082,67 @@
       actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [createButton({ label: 'Finish the journey', action: 'finishJourney', testId: 'action-finish', variant: 'primary' }), createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' })]));
     }
     const showCoach = edge && state.nodeId === World.FIRST_NODE_ID && !state.flags.coachDismissed && state.dayIndex === 0;
-    replaceScreen([createHud(state), createElement('main', { className: 'stop-main' }, [createElement('h1', { className: 'screen-title', text: node.name }), sceneCanvas, showCoach ? createCoachCard(state, edge) : null, tabList, tabPanel]), actionBar], 'stop');
+    replaceScreen([createHud(state), createElement('main', { className: 'stop-main' }, [
+      createElement('h1', { className: 'screen-title', text: node.name }),
+      // Two groups so a wide screen can put the picture beside the tabs; on a phone they simply stack.
+      createElement('div', { className: 'stop-grid' }, [
+        createElement('div', { className: 'stop-aside' }, [sceneCanvas, showCoach ? createCoachCard(state, edge) : null]),
+        createElement('div', { className: 'stop-body' }, [tabList, tabPanel]),
+      ]),
+    ]), actionBar], 'stop');
   }
 
   // ---------------------------------------------------------------------------
   // Road screen
   // ---------------------------------------------------------------------------
 
+  /** Today's news: every line from today that is not routine, under a one-line header for the night just past. */
+  function createTodayBlock(state) {
+    const todayEntries = state.log.filter((entry) => entry.dayIndex === state.dayIndex && entry.level !== 'routine');
+    const nightLine = [...state.log].reverse().find((entry) => entry.dayIndex === state.dayIndex && entry.level === 'routine' && /^Night in/.test(entry.text));
+    return createElement('section', { className: 'today', 'aria-label': 'Today on the road', dataset: { testid: 'today' } }, [
+      createElement('h3', { className: 'today__title', text: `Day ${state.dayIndex}${nightLine ? ` \u00b7 ${nightLine.text}` : ''}` }),
+      createElement('ul', { className: 'trail-log', 'aria-live': 'polite' }, todayEntries.length > 0
+        ? todayEntries.map((entry) => createElement('li', { text: entry.text }))
+        : [createElement('li', { className: 'trail-log__quiet', text: 'A quiet day on the road.' })]),
+    ]);
+  }
+
   function showRoad(state, view) {
     const edge = State.getEdge(state);
     const forecast = createForecastLine(state, edge);
     const canvas = getRoadCanvas();
     const caravanPanel = createElement('details', { className: 'caravan-panel', dataset: { testid: 'caravan-details' } }, [
-      createElement('summary', { text: 'Caravan: pace, rations, party' }),
-      createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'), createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration'),
+      createElement('summary', { text: 'Caravan: party, animals and supplies' }),
       createPartyList(state, true),
+      createCaravanSnapshot(state),
     ]);
     if (view.isCaravanPanelOpen) caravanPanel.setAttribute('open', '');
     const forecastText = Engine.getForecast(state);
     replaceScreen([
       createHud(state),
       createElement('main', { className: 'travel-main' }, [
-        canvas,
-        createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
-        createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
-        createElement('p', { className: 'forecast', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
-        createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }),
-        createElement('div', { className: 'button-row' }, [
-          createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),
-          createButton({ label: 'Rest here', action: 'restDay', testId: 'travel-rest' }),
+        createElement('div', { className: 'travel-scene' }, [
+          canvas,
+          createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
+          createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
+          createElement('p', { className: 'forecast', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
+          createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }),
+          createPartyStrip(state),
+          createElement('div', { className: 'button-row' }, [
+            createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),
+            createButton({ label: 'Rest here', action: 'restDay', testId: 'travel-rest' }),
+          ]),
+          state.isPaused ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Tap Resume to continue.' }) : null,
+          state.vignette ? createElement('p', { className: 'vignette', dataset: { testid: 'vignette' }, text: state.vignette }) : null,
+          createTodayBlock(state),
+          createButton({ label: 'Full log', action: 'openLog', testId: 'log-full', variant: 'quiet' }),
         ]),
-        state.isPaused ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Tap Resume to continue.' }) : null,
-        state.vignette ? createElement('p', { className: 'vignette', dataset: { testid: 'vignette' }, text: state.vignette }) : null,
-        caravanPanel,
-        createElement('ul', { className: 'trail-log', 'aria-live': 'polite', 'aria-label': 'Recent events' }, state.log.slice(-3).map((entry) => createElement('li', { text: entry.text }))),
-        createButton({ label: 'Full log', action: 'openLog', testId: 'log-full', variant: 'quiet' }),
+        createElement('div', { className: 'travel-ledger' }, [
+          createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'),
+          createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration'),
+          caravanPanel,
+        ]),
       ]),
     ], 'road');
   }
@@ -1064,6 +1198,12 @@
       createPanel(Content.SUBPLOTS[state.subplotId].label, [createElement('p', { className: 'paragraph', text: SUBPLOT_ENDINGS[state.subplotId][tier] })]),
       dead.length > 0 ? createPanel('Graves', [createElement('ul', { className: 'record-list' }, dead.map((member) => createElement('li', { text: `${member.name} (${member.role ? Config.ROLES[member.role].label : 'Leader'}) · ${member.cause} · day ${member.dayOfDeath}` })))]) : null,
       createPanel('What you learned', learned.length === 0 ? [createElement('p', { className: 'paragraph', text: 'Nothing recorded.' })] : [createElement('ul', { className: 'record-list' }, learned.map((card) => createElement('li', { text: card.title })))]),
+      createPanel('Tell us how it went', [
+        createRadioGroup('How much did you enjoy the journey?', [1, 2, 3, 4, 5].map((number) => ({ id: String(number), label: String(number) })), null, 'rateEnjoyment', 'rate-enjoy', '1 is not at all, 5 is very much.'),
+        createRadioGroup('Did you learn something about the road?', [{ id: 'yes', label: 'Yes, a lot' }, { id: 'little', label: 'A little' }, { id: 'no', label: 'No' }], null, 'rateLearning', 'rate-learn'),
+        createElement('p', { className: 'footnote', id: 'rating-thanks', role: 'status', 'aria-live': 'polite' }),
+        createFeedbackLink('end-feedback'),
+      ]),
     ];
     if (dead.length > 0) children.push(createElement('label', { className: 'field' }, [createElement('span', { className: 'field__label', text: 'Epitaph for the roadside grave (optional)' }), createElement('input', { className: 'field__input', type: 'text', id: 'epitaph', maxlength: String(Config.LIMITS.MAX_EPITAPH_LENGTH), autocomplete: 'off', dataset: { testid: 'end-epitaph', enterAction: 'finishRun' } })]));
     children.push(createButton({ label: dead.length > 0 ? 'Leave graves and return' : 'Record the result', action: 'finishRun', testId: 'end-leave-grave', variant: 'primary' }));
@@ -1109,14 +1249,57 @@
     } });
   }
 
-  /** News the player must not miss: illness, weakness, deaths. Dismissible; the road is paused while it is open. */
-  function openReport(alerts, extraText) {
+  /**
+   * The decision sheet. It opens whenever news stops the game, lists the news, and shows the exact state of the
+   * caravan with Treat, pace and ration controls, so the player can decide without hunting through panels.
+   * The road stays paused while it is open. If it is already open, new news is added to the same sheet.
+   * @param {Array<{tone:string, text:string}>} alerts
+   * @param {string|null} extraText
+   * @param {Object} state
+   */
+  function openReport(alerts, extraText, state) {
+    reportSheet.state = state;
+    if (reportSheet.handle) {
+      const known = new Set(reportSheet.alerts.map((alert) => alert.text));
+      reportSheet.alerts = [...reportSheet.alerts, ...alerts.filter((alert) => !known.has(alert.text))];
+      reportSheet.handle.refresh(buildReportBody);
+      return;
+    }
+    reportSheet.alerts = [...alerts];
+    reportSheet.extraText = extraText || '';
     const hasDeath = alerts.some((alert) => alert.tone === 'danger');
-    openSheet({ title: hasDeath ? 'Sad news from the caravan' : 'News from the caravan', testId: 'report', build(body) {
-      if (extraText) body.appendChild(createElement('p', { className: 'paragraph', text: extraText }));
-      body.appendChild(createElement('ul', { className: 'report-list' }, alerts.map((alert) => createElement('li', { className: `report-list__item report-list__item--${alert.tone}`, text: alert.text }))));
-      body.appendChild(createButton({ label: 'Understood', action: 'closeSheet', variant: 'primary', testId: 'report-close' }));
-    } });
+    reportSheet.handle = openSheet({ title: hasDeath ? 'Sad news from the caravan' : 'News from the caravan', testId: 'report', build: buildReportBody });
+  }
+
+  function buildReportBody(body) {
+    const state = reportSheet.state;
+    if (reportSheet.extraText) body.appendChild(createElement('p', { className: 'paragraph', text: reportSheet.extraText }));
+    if (reportSheet.notice) body.appendChild(createElement('p', { className: `banner banner--${reportSheet.notice.tone}`, role: 'status', text: reportSheet.notice.text }));
+    if (reportSheet.alerts.length > 0) {
+      body.appendChild(createElement('ul', { className: 'report-list' }, reportSheet.alerts.map((alert) => createElement('li', { className: `report-list__item report-list__item--${alert.tone}`, text: alert.text }))));
+    }
+    body.appendChild(createElement('h3', { className: 'card-title', text: 'The caravan now' }));
+    body.appendChild(createPartyList(state, true));
+    body.appendChild(createCaravanSnapshot(state));
+    body.appendChild(createStepper('Pace', Config.PACES, state.pace, 'setPace', 'report-pace'));
+    body.appendChild(createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'report-ration'));
+    const actions = [createButton({ label: 'Continue', action: 'closeSheet', variant: 'primary', testId: 'report-close' })];
+    if (state.phase === 'road') actions.push(createButton({ label: 'Rest here', action: 'reportRest', testId: 'report-rest' }));
+    body.appendChild(createElement('div', { className: 'report-actions' }, actions));
+  }
+
+  /** Redraws the open decision sheet with the latest state (after Treat, a pace change, or a purchase). */
+  function refreshReport(state) {
+    if (!reportSheet.handle) return;
+    reportSheet.state = state;
+    reportSheet.handle.refresh(buildReportBody);
+  }
+
+  const isReportOpen = () => reportSheet.handle !== null;
+
+  /** A one-line result shown inside the open decision sheet (for example, whether the medicine worked). */
+  function setReportNotice(text, tone) {
+    if (reportSheet.handle) reportSheet.notice = { text, tone: tone || 'info' };
   }
 
   function openSettings(settings, isStorageSupported) {
@@ -1132,8 +1315,11 @@
           createButton({ label: `Minigame assists (bigger targets, more time): ${settings.hasAssists ? 'On' : 'Off'}`, action: 'toggleAssists', isPressed: settings.hasAssists }),
           createButton({ label: 'Export save file', action: 'exportSave', testId: 'settings-export' }),
           createElement('label', { className: 'button button--secondary file-button' }, ['Import save file', createElement('input', { type: 'file', accept: '.json,application/json', className: 'visually-hidden', dataset: { changeAction: 'importSave', testid: 'settings-import' } })]),
+          createButton({ label: `Share anonymous play statistics: ${settings.shareStatistics === false ? 'Off' : 'On'}`, action: 'toggleShareStatistics', testId: 'settings-statistics', isPressed: settings.shareStatistics !== false }),
+          createFeedbackLink('settings-feedback'),
           createButton({ label: 'Reset saved game', action: 'confirmResetSave', testId: 'settings-reset', variant: 'danger' }),
         ]));
+        body.appendChild(createElement('p', { className: 'footnote', text: 'Play statistics are counts only, such as which stop you reached. Names, epitaphs and anything you type are never sent.' }));
         body.appendChild(createElement('p', { className: 'footnote', text: `Version ${Config.GAME_VERSION}. Saving: ${isStorageSupported ? 'on (this browser)' : 'unavailable in this browser mode'}.` }));
         body.appendChild(createButton({ label: 'Close', action: 'closeSheet', variant: 'primary' }));
       },
@@ -1167,6 +1353,12 @@
     if (!notice) return;
     notice.textContent = text;
     notice.className = text ? `banner banner--${tone || 'info'}` : '';
+  }
+
+  /** Shows a short thank-you under the end-screen ratings. */
+  function showRatingThanks(text) {
+    const element = document.getElementById('rating-thanks');
+    if (element) element.textContent = text;
   }
 
   const toggleHudExpanded = () => { isHudExpanded = !isHudExpanded; };
@@ -1204,7 +1396,7 @@
   namespace.UI = Object.freeze({
     initialize, showTitle, showOpening, readOpeningName, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
-    openCodex, openLog, openReport, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
+    openCodex, openLog, openReport, refreshReport, isReportOpen, setReportNotice, showRatingThanks, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
     getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,
   });
 })(window.Karvanyan);

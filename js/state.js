@@ -260,7 +260,24 @@
     return total;
   }
 
-  const makeNote = (state, text) => ({ ...state, log: [...state.log, { dayIndex: state.dayIndex, text }].slice(-Config.LIMITS.MAX_LOG_ENTRIES) });
+  /** Log lines saved by older builds carry no serial; they count as 0, so every new line sorts after them. */
+  const getLastLogSerial = (state) => {
+    const last = state.log[state.log.length - 1];
+    return last && Number.isFinite(last.serial) ? last.serial : 0;
+  };
+
+  const LOG_LEVELS = Object.freeze(['routine', 'stop', 'danger']);
+
+  /**
+   * Adds a line to the log.
+   * @param {'routine'|'stop'|'danger'} [level]  routine = never shown as news; stop = pauses the game and opens the
+   *   decision sheet; danger = same, in the red tone. No level = ordinary news that stays on screen long enough to read.
+   */
+  const makeNote = (state, text, level) => {
+    const entry = { dayIndex: state.dayIndex, text, serial: getLastLogSerial(state) + 1 };
+    if (level) entry.level = level;
+    return { ...state, log: [...state.log, entry].slice(-Config.LIMITS.MAX_LOG_ENTRIES) };
+  };
 
   const patchState = (state, patch) => ({ ...state, ...patch });
 
@@ -357,6 +374,30 @@
     if (random && random.chance(1 - getMod(mods, 'animalLossMult', 1))) return state;
     const weakest = [...state.animals].sort((first, second) => first.hp - second.hp)[0];
     return changeAnimalHealth(state, weakest.id, -999);
+  }
+
+  /**
+   * Removes one animal, chosen by how much it carries (heavier carriers are more likely to be the one swept away).
+   * Unlike loseAnimal this does not re-roll the animal-loss modifier: the caller applies it once to the risk.
+   * @returns {{state:Object, animal:(Object|null), loadShare:number}} loadShare = the fraction of the caravan's capacity it carried
+   */
+  function loseAnimalByLoad(state, random) {
+    if (state.animals.length === 0) return { state, animal: null, loadShare: 0 };
+    const mods = getModifiers(state);
+    const capacities = state.animals.map((animal) => getAnimalCapacity(animal, mods));
+    const total = capacities.reduce((sum, value) => sum + value, 0);
+    let target = random.next() * total;
+    let chosenIndex = capacities.length - 1;
+    for (let index = 0; index < capacities.length; index += 1) {
+      if (target < capacities[index]) { chosenIndex = index; break; }
+      target -= capacities[index];
+    }
+    const animal = state.animals[chosenIndex];
+    return {
+      state: { ...state, animals: state.animals.filter((item) => item.id !== animal.id) },
+      animal,
+      loadShare: total > 0 ? capacities[chosenIndex] / total : 0,
+    };
   }
 
   function learnCard(state, cardId) {
@@ -562,7 +603,8 @@
       rumours: [], regionStock: Object.fromEntries(Object.keys(World.REGIONS).map((id) => [id, 1])),
       marketState: {}, pools: {}, vignettesSeen: [], graveLines: [],
       stats: { travelDays: 0, restDays: 0, saraiNights: 0, campNights: 0, idleDays: 0, provisionRations: 0, rationsEaten: 0, treatments: 0, salesCities: [], servicesUsed: [], saraiEligibleNights: 0 },
-      log: [{ dayIndex: 0, text: 'Your caravan gathers in Kabul at dawn.' }], isPaused: false, outcome: null,
+      log: [{ dayIndex: 0, text: 'Your caravan gathers in Kabul at dawn.', serial: 1 }], isPaused: false, outcome: null,
+      supplyWarning: { rations: 0, feeds: 0 },
     };
 
     // Cargo is bought once at the Kabul price, capped by free capacity (GDD 3.4).
@@ -788,7 +830,8 @@
       vignettesSeen: Array.isArray(raw.vignettesSeen) ? raw.vignettesSeen.filter((item) => typeof item === 'string').slice(-80).map((item) => item.slice(0, 60)) : [],
       graveLines: Array.isArray(raw.graveLines) ? sanitizeJson(raw.graveLines, 3).slice(0, 8) : [],
       stats: (() => { const stats = sanitizeJson(raw.stats && typeof raw.stats === 'object' ? raw.stats : {}, 3) || {}; ['travelDays', 'restDays', 'saraiNights', 'campNights', 'idleDays', 'provisionRations', 'rationsEaten', 'treatments', 'saraiEligibleNights'].forEach((key) => { stats[key] = clampNumber(stats[key], 0, 1e6, 0); }); stats.salesCities = Array.isArray(stats.salesCities) ? stats.salesCities.filter((item) => typeof item === 'string') : []; stats.servicesUsed = Array.isArray(stats.servicesUsed) ? stats.servicesUsed.filter((item) => typeof item === 'string') : []; return stats; })(),
-      log: Array.isArray(raw.log) ? raw.log.slice(-Config.LIMITS.MAX_LOG_ENTRIES).map((entry) => ({ dayIndex: Math.floor(clampNumber(entry && entry.dayIndex, 0, Config.LIMITS.MAX_DAYS, 0)), text: sanitizeText(entry && entry.text, 200, '') })).filter((entry) => entry.text) : [],
+      log: Array.isArray(raw.log) ? raw.log.slice(-Config.LIMITS.MAX_LOG_ENTRIES).map((entry) => ({ dayIndex: Math.floor(clampNumber(entry && entry.dayIndex, 0, Config.LIMITS.MAX_DAYS, 0)), text: sanitizeText(entry && entry.text, 200, ''), serial: Math.floor(clampNumber(entry && entry.serial, 0, 1e9, 0)), level: entry && LOG_LEVELS.includes(entry.level) ? entry.level : undefined })).filter((entry) => entry.text).map((entry) => (entry.level ? entry : { dayIndex: entry.dayIndex, text: entry.text, serial: entry.serial })) : [],
+      supplyWarning: (() => { const raw3 = raw.supplyWarning && typeof raw.supplyWarning === 'object' ? raw.supplyWarning : {}; return { rations: Math.floor(clampNumber(raw3.rations, 0, 3, 0)), feeds: Math.floor(clampNumber(raw3.feeds, 0, 3, 0)) }; })(),
       isPaused: true, outcome,
     };
   }
@@ -872,6 +915,7 @@
       hasScanlines: source.hasScanlines === undefined ? defaults.hasScanlines : Boolean(source.hasScanlines),
       hasAssists: Boolean(source.hasAssists), saraiDefault: ['ask', 'always', 'never'].includes(source.saraiDefault) ? source.saraiDefault : defaults.saraiDefault,
       hasSeenIntro: Boolean(source.hasSeenIntro),
+      shareStatistics: source.shareStatistics === undefined ? defaults.shareStatistics : Boolean(source.shareStatistics),
     };
   }
   const saveSettings = (settings) => storage.writeText(Config.STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
@@ -897,7 +941,7 @@
     getModifiers, getMod, getLivingIndices, getLivingCount, getLeader, getSickCount, getWeakCount, getActiveHires, getGuardCount,
     getCapacity, getLoad, getFreeCapacity, getLoadFactor, getAnimalCapacity, getRationsPerDay, getFeedsPerDay,
     makeNote, patchState, adjustResources, updateMember, updateAnimal, changeMemberHealth, changeAllHealth, makeMemberSick, cureMember,
-    getCureChance, treatMember, changeAnimalHealth, loseAnimal, learnCard, addQuality, setFlag, getMemberHpCap,
+    getCureChance, treatMember, changeAnimalHealth, loseAnimal, loseAnimalByLoad, getLastLogSerial, learnCard, addQuality, setFlag, getMemberHpCap,
     getBuyPrice, getLodgingFee, getSeasonFactor, getMarketRecord, getCargoBasePrice, getCargoPriceRange, quoteSale, sellCargoLot, sellSurplus, sellAnimal, ensurePool,
     createNewGame, computeScore, computeSubplotBonus, finishJourney, getAnimalBodyValue,
     isStorageSupported: () => storage.isPersistent,
