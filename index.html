@@ -6,6 +6,7 @@
        plus the GoatCounter counting image (https://CODE.goatcounter.com/count) when a site code is set in js/config.js.
        data: is for the inline favicon and the paper texture. The game builds its pages with textContent and
        never uses inline scripts, inline style attributes, forms or frames. -->
+  
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.goatcounter.com; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f1e6cf" media="(prefers-color-scheme: light)">
@@ -49,5 +50,6 @@
   <script src="./js/services.js?v=3.0.0" defer></script>
   <script src="./js/ui.js?v=3.0.0" defer></script>
   <script src="./js/game.js?v=3.0.0" defer></script>
+  <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "65585f2413684aae92d08392b64cf2a5"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
