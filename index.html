@@ -2,18 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- Content-Security-Policy (3.0). GitHub Pages cannot send headers, so it is set here. Only this site's own files may run or load,
-       plus the GoatCounter counting image (https://CODE.goatcounter.com/count) when a site code is set in js/config.js,
-       and Cloudflare Web Analytics beacon script/telemetry.
-       data: is for the inline favicon and the paper texture. The game builds its pages with textContent and
-       never uses inline scripts, inline style attributes, forms or frames. -->
-  <meta http-equiv=<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: https://*.goatcounter.com https://cloudflareinsights.com https://*.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <!-- Content-Security-Policy: Allows self, GoatCounter, and Cloudflare Analytics beacon and telemetry -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: https://*.goatcounter.com https://cloudflareinsights.com https://*.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f1e6cf" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#14233a" media="(prefers-color-scheme: dark)">
   <meta name="description" content="Kārvānyān of Sadak-e-Azam: The Long Road East. A merchant-caravan game on the Grand Trunk Road, Kabul to Dhaka, 1665.">
   <title>Kārvānyān of Sadak-e-Azam: The Long Road East</title>
-  <!-- Inline SVG favicon (an inked seal): no external file, no request. -->
+  <!-- Inline SVG favicon (an inked seal) -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f1e6cf'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23a63a24' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23a63a24'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./css/style.css?v=3.0.0">
   <link rel="stylesheet" href="./css/journey-map.css?v=3.0.0">
@@ -22,23 +18,19 @@
   <a class="skip-link" href="#screen">Skip to the game</a>
 
   <div id="app">
-    <!-- Status messages from game actions ("Not enough rupees."). -->
     <div id="notice" role="status" aria-live="polite"></div>
-    <!-- Every screen is rendered into this element by js/ui.js. -->
     <div id="screen" tabindex="-1"></div>
     <div id="save-indicator" class="save-indicator" role="status" aria-live="polite"></div>
-    <!-- Name, version, official address and feedback link. Filled in by js/ui.js with textContent. -->
     <footer id="site-footer" class="site-footer"></footer>
   </div>
 
-  <!-- Dialogs and bottom sheets live outside #app so the rest of the page can be made inert. -->
   <div id="modal-root"></div>
 
   <noscript>
     <p class="noscript">This game needs JavaScript. Please enable it and reload the page.</p>
   </noscript>
 
-  <!-- Classic scripts in dependency order. They share one namespace: window.Karvanyan. -->
+  <!-- Classic scripts in dependency order -->
   <script src="./js/config.js?v=3.0.0" defer></script>
   <script src="./js/world.js?v=3.0.0" defer></script>
   <script src="./js/content.js?v=3.0.0" defer></script>
@@ -50,8 +42,5 @@
   <script src="./js/services.js?v=3.0.0" defer></script>
   <script src="./js/ui.js?v=3.0.0" defer></script>
   <script src="./js/game.js?v=3.0.0" defer></script>
-  <!-- Cloudflare Web Analytics -->
-  <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "65585f2413684aae92d08392b64cf2a5"}'></script>
-  <!-- End Cloudflare Web Analytics -->
 </body>
 </html>
