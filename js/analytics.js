@@ -19,7 +19,7 @@
   const World = namespace.World;
 
   const MONTH_IDS = Object.freeze({ 8: 'sep', 9: 'oct', 10: 'nov' });
-  const DEATH_CAUSES = Object.freeze(['hunger', 'exhaustion', 'violence', 'fever', 'dysentery', 'heat', 'exposure', 'other']);
+  const DEATH_CAUSES = Object.freeze(['hunger', 'exhaustion', 'violence', 'fever', 'dysentery', 'heat', 'exposure', 'drowning', 'other']);
   const CROSSING_CHOICES = Object.freeze(['bridge', 'ferry', 'ferry2', 'premium', 'wait', 'ford', 'swim']);
 
   /** Every event kind and, for each path segment after it, the complete list of values allowed there. */
