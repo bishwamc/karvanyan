@@ -10,7 +10,7 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '3.0.0';
+  const GAME_VERSION = '3.0.1';
   const SAVE_SCHEMA_VERSION = 2;
 
   /** Where the game lives and where players send feedback. Change the address here if the site moves. */
