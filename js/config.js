@@ -21,7 +21,7 @@
    * Anonymous play statistics (GoatCounter). Leave GOATCOUNTER_CODE as null and nothing is ever sent.
    * To switch counting on, put the site code here, e.g. 'karvanyan' for https://karvanyan.goatcounter.com.
    */
-  const ANALYTICS = Object.freeze({ GOATCOUNTER_CODE: null });
+  const ANALYTICS = Object.freeze({ GOATCOUNTER_CODE: 'karvanyan' });
 
   const STORAGE_KEYS = Object.freeze({
     SAVE: 'karvanyan.save.v2', GRAVES: 'karvanyan.graves.v1', TOP_SCORES: 'karvanyan.top.v2', LOCAL_STATS: 'karvanyan.local-stats.v1',
