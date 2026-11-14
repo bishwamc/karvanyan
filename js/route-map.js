@@ -118,7 +118,9 @@
    * stops as dots, and the caravan as a marker. Only reached stops are labelled.
    * @param {CanvasRenderingContext2D} ctx
    */
-  function paintJourneyMap(ctx, trail, width, height) {
+  function paintJourneyMap(ctx, trail, width, height, displayScale) {
+    // On a phone the canvas is drawn smaller than its pixel size; the label font grows so it still reads at 13 CSS pixels (v4 F8).
+    const labelFontPixels = Math.max(17, Math.ceil(13 / Math.max(0.2, Math.min(1, displayScale || 1))));
     const project = makeProjector(width, height, 28);
     const fullRoute = getFullRouteIds().map((id) => coordsOf(id)).filter(Boolean);
     const travelled = trail.stops.map((stop) => stop.coords).concat(trail.isFinished ? [] : [trail.head]);
@@ -152,11 +154,11 @@
     strokePath(travelled);
     ctx.shadowBlur = 0;
 
-    ctx.font = '17px Georgia, "Times New Roman", serif';
+    ctx.font = `${labelFontPixels}px Georgia, "Times New Roman", serif`;
     ctx.textBaseline = 'middle';
     // Labels that would sit on top of an earlier label are skipped; the start and end are always labelled.
     const placedLabels = [];
-    const LABEL_CLEARANCE = 70;
+    const LABEL_CLEARANCE = 70 * (labelFontPixels / 17);
     trail.stops.forEach((stop, index) => {
       const [x, y] = project(stop.coords);
       const isEndpoint = index === 0 || index === trail.stops.length - 1;

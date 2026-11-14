@@ -236,8 +236,8 @@
   const AUTOSAVE_DEBOUNCE_MILLISECONDS = 400;
   const AUTOSAVE_EVERY_N_TRAVEL_DAYS = 3;
   const MAXIMUM_IMPORT_FILE_BYTES = 400000;
-  const OPENING_STEPS = 12;
-  const OPENING_SPEECH_INDEX = Object.freeze([0, 1, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9]);
+  const Story = namespace.Story;
+  const copy = Content.copy;
 
   let gameState = null;
   let randomSource = State.createRandomSource(1);
@@ -253,8 +253,11 @@
   let hasRecordedEnding = false;
   // On a wide screen the caravan panel is shown open; on a phone it starts folded away.
   let isCaravanPanelOpen = typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
-  let openingStep = 0;
-  let openingDraft = null;
+  let startDraft = null;
+  let isStartMoreOpen = false;
+  // A chapter-end screen that is due but waiting for a choice or sheet to close; and the last game day an automatic sheet opened.
+  let pendingChapterEnd = null;
+  let lastAutoSheetDay = -1;
   let openingSeed = 1;
   // Journey map waiting to be shown (entering a region, or the end of a run). Shown once no dialog is open.
   let deferredMap = null;
@@ -302,25 +305,32 @@
     if (loaded.status === 'ok') {
       const edge = loaded.state.edgeId ? World.findEdge(loaded.state.edgeId) : null;
       const place = edge ? `on the road to ${World.findNode(edge.to).name}` : World.findNode(loaded.state.nodeId).name;
-      saveSummary = `Day ${loaded.state.dayIndex} · ${place} · ${State.getLivingCount(loaded.state)}/${loaded.state.party.length} alive`;
+      const chapter = Story.getChapter(Story.getChapterNumberForNode(loaded.state.nodeId));
+      saveSummary = `${chapter ? `${chapter.title} · ` : ''}Day ${loaded.state.dayIndex} · ${place} · ${State.getLivingCount(loaded.state)}/${loaded.state.party.length} alive`;
     } else if (loaded.status === 'damaged') saveProblem = 'Your saved game could not be read. You can start a new journey, or import a backup from Settings.';
     else if (loaded.status === 'newer') saveProblem = 'This save is from a newer version of the game. Please reload to get the latest version.';
     UI().showTitle({ saveSummary, saveProblem, graves: State.loadGraves(), topScores: State.loadTopScores(), isStorageSupported: State.isStorageSupported(), hasLastSetup: State.loadLastSetup() !== null });
   }
 
-  function renderRoadScreen() {
+  function renderRoadScreen(marginNoteId) {
     const details = document.querySelector('[data-testid="caravan-details"]');
     if (details) isCaravanPanelOpen = details.hasAttribute('open');
-    UI().showRoad(gameState, { isCaravanPanelOpen });
+    UI().showRoad(gameState, { isCaravanPanelOpen, marginNoteId: marginNoteId || null });
     const canvas = UI().getRoadCanvas();
     const screen = document.getElementById('screen');
     if (!screen.contains(canvas)) screen.querySelector('.travel-main').prepend(canvas);
     UI().renderRoadFrame(gameState, performance.now() / 1000, true);
   }
 
+  /** The margin note to show now, if any. Notes inside a dialog are marked seen straight away: the dialog is shown once. */
+  function currentMarginNoteId() {
+    return gameState ? Story.pickMarginNoteId({ ...gameState, pending: null }) : null;
+  }
+
   function renderBackground() {
-    if (gameState.phase === 'road' || (gameState.edgeId && gameState.phase !== 'stop')) renderRoadScreen();
-    else UI().showStop(gameState);
+    const marginNoteId = currentMarginNoteId();
+    if (gameState.phase === 'road' || (gameState.edgeId && gameState.phase !== 'stop')) renderRoadScreen(marginNoteId);
+    else UI().showStop(gameState, { marginNoteId });
   }
 
   function renderCurrent() {
@@ -328,13 +338,17 @@
     if (gameState.phase === 'ended') { UI().closePending(); UI().showEnd(gameState); }
     else {
       renderBackground();
-      if (gameState.pending) UI().showPending(gameState); else UI().closePending();
+      if (gameState.pending) {
+        const dialogNoteId = Story.pickMarginNoteId(gameState);
+        if (dialogNoteId) gameState = Story.markCoachNoteSeen(gameState, dialogNoteId);
+        UI().showPending(gameState, { marginNoteId: dialogNoteId });
+      } else UI().closePending();
     }
   }
 
   /** Shows the journey map when no choice dialog or sheet is open; otherwise waits for the next render. */
   function offerDeferredMap() {
-    if (!deferredMap || !gameState || gameState.pending || UI().hasOpenModal()) return;
+    if (!deferredMap || !gameState || gameState.pending || UI().hasOpenModal() || pendingChapterEnd) return;
     const shown = deferredMap;
     deferredMap = null;
     UI().showJourneyMap(shown.trail, shown.options);
@@ -404,15 +418,32 @@
     if (gameState.phase === 'ended') handleJourneyEnded();
     else if (shouldSave) scheduleAutosave();
     queueJourneyMaps(previousState, gameState);
+    const dueChapter = Story.getChapterEndDue(previousState, gameState);
+    if (dueChapter) { pendingChapterEnd = dueChapter; trackEvent('chapter', String(dueChapter.number), 'done'); }
     if (shouldRender) renderCurrent();
     if (shouldAlert && previousState && gameState.phase !== 'ended') {
-      const alerts = Engine.detectAlerts(previousState, gameState).filter((alert) => alert.tone !== 'info');
-      if (alerts.length > 0) UI().openReport(alerts, null, gameState);
+      // F7: only real decisions stop the game (a death, a new illness); at most one automatic sheet per game day.
+      // Everything else waits in the evening ledger.
+      const alerts = Engine.detectAlerts(previousState, gameState).filter((alert) => alert.tone === 'danger' || /fallen ill/.test(alert.text));
+      if (alerts.length > 0 && lastAutoSheetDay !== gameState.dayIndex) { lastAutoSheetDay = gameState.dayIndex; UI().openReport(alerts, null, gameState); }
     }
     // An open decision sheet always shows the latest numbers (after Treat, a pace change, a purchase).
     if (UI().isReportOpen()) UI().refreshReport(gameState);
-    // Last, so the journey map waits behind any report or dialog that this move opened.
+    // Last, so the chapter end and the journey map wait behind any report or dialog that this move opened.
+    offerChapterEnd();
     offerDeferredMap();
+  }
+
+  /** Opens the chapter-end screen once nothing else is open. */
+  function offerChapterEnd() {
+    if (!pendingChapterEnd || !gameState || gameState.pending || gameState.phase !== 'stop' || UI().hasOpenModal()) return;
+    const chapter = pendingChapterEnd;
+    pendingChapterEnd = null;
+    UI().openChapterEnd({
+      chapter, days: gameState.dayIndex, alive: State.getLivingCount(gameState), partySize: gameState.party.length,
+      conditionWord: Story.describeCargoCondition(gameState.cargo ? gameState.cargo.condition : 1),
+      showRatings: chapter.number === 1 && !gameState.flags.rated,
+    });
   }
 
   // ---- the daily loop --------------------------------------------------------
@@ -478,12 +509,15 @@
     UI().showNotice(gained > 0 ? `The day's work brought about ${gained} rations.` : 'The day brought little food.', gained > 0 ? 'info' : 'warning');
   }
 
-  // ---- opening ---------------------------------------------------------------
+  // ---- start (one screen) ----------------------------------------------------
+
+  const START_PARTY_BY_DEFAULT = Object.freeze(['hakim_jafar', 'sher_dil', 'bibi_gulnar']);
 
   function defaultDraft() {
     const last = State.loadLastSetup();
-    const base = { archetypeId: 'persian', leaderName: '', cargoShare: 0.55, candidateIds: [], extraAnimals: [], rationPacks: 8, feedPacks: 8, startMonthIndex: 9, pace: 'steady', rationLevel: 'filling', scout: true, subplotId: 'book' };
-    return last ? { ...base, ...last, extraAnimals: [], candidateIds: [] } : base;
+    // First-timers get a safe, complete default party and the Persian merchant, so four taps reach the road.
+    const base = { archetypeId: 'persian', leaderName: '', cargoShare: 0.4, candidateIds: [...START_PARTY_BY_DEFAULT], extraAnimals: ['donkey'], rationPacks: 8, feedPacks: 8, startMonthIndex: 9, pace: 'steady', rationLevel: 'filling', scout: true, subplotId: 'book' };
+    return last ? { ...base, ...last, extraAnimals: last.archetypeId === 'persian' ? ['donkey'] : [], candidateIds: last.candidateIds && last.candidateIds.length === 3 ? last.candidateIds : base.candidateIds } : base;
   }
 
   function draftToSetup(draft) {
@@ -491,37 +525,34 @@
     return { ...draft, leaderName: draft.leaderName || archetype.names[0], worldSeed: openingSeed };
   }
 
-  /** Three candidates from three different roles not yet taken. First run uses the curated offers. */
-  function buildOffer(draft, step) {
-    const takenRoles = draft.candidateIds.map((id) => State.findCandidate(id).role);
-    const isFirstRun = State.loadLastSetup() === null;
-    const curated = isFirstRun && step < 4 ? Content.FIRST_RUN_OFFERS[step - 2] : null;
-    if (curated) {
-      const offer = curated.map((id) => State.findCandidate(id)).filter((candidate) => !takenRoles.includes(candidate.role));
-      if (offer.length === 3) return offer;
-    }
-    const roles = Object.keys(Config.ROLES).filter((role) => !takenRoles.includes(role));
-    const source = State.createKeyedSource(openingSeed, `offer|${step}`);
-    const shuffled = [...roles].sort(() => source.next() - 0.5).slice(0, 3);
-    return shuffled.map((role) => source.pick(Content.CANDIDATES.filter((candidate) => candidate.role === role)));
+  /** One curated candidate per role, in the order the start screen shows them. */
+  function buildStartOffers() {
+    return Story.START_ROLE_ORDER.map((role) => ({ role, candidate: State.findCandidate(Story.CURATED_CANDIDATE_BY_ROLE[role]) }));
   }
 
-  function renderOpening() {
-    const draft = openingDraft;
-    const preview = State.createNewGame(draftToSetup(draft));
-    UI().showOpening({
-      step: openingStep, steps: OPENING_STEPS, speech: Content.DAULAT_BEG.beats[OPENING_SPEECH_INDEX[openingStep]],
-      draft: { ...draft, leaderName: draft.leaderName || State.findArchetype(draft.archetypeId).names[0] }, preview,
-      offer: openingStep >= 2 && openingStep <= 4 ? buildOffer(draft, openingStep) : [], canQuickStart: State.loadLastSetup() !== null,
-    });
+  /** The first role (in a fixed order) that the chosen three leave empty, as one honest line about what that costs. */
+  function buildGapLine(draft) {
+    const roles = new Set(draft.candidateIds.map((id) => State.findCandidate(id).role));
+    const missing = Story.START_ROLE_ORDER.find((role) => !roles.has(role));
+    return draft.candidateIds.length === 3 && missing ? Story.GAP_LINES[missing] : null;
+  }
+
+  function renderStart() {
+    UI().showStart({ draft: startDraft, offers: buildStartOffers(), gapLine: buildGapLine(startDraft), isMoreOpen: isStartMoreOpen, canQuickStart: State.loadLastSetup() !== null });
   }
 
   function startOpening() {
     openingSeed = createSeedFromClock();
-    openingDraft = defaultDraft();
-    openingStep = 0;
-    renderOpening();
+    startDraft = defaultDraft();
+    isStartMoreOpen = false;
+    renderStart();
   }
+
+  const startUpdate = (patch) => {
+    if (isStartMoreOpen) startDraft = { ...startDraft, leaderName: State.sanitizeText(UI().readStartName(), Config.LIMITS.MAX_NAME_LENGTH, '') || startDraft.leaderName };
+    startDraft = { ...startDraft, ...patch };
+    renderStart();
+  };
 
   /** Builds a game from a draft, remembers the setup for quick start, and begins. */
   function beginJourneyFromDraft(draft) {
@@ -534,7 +565,7 @@
     gameState = State.createNewGame(setup);
     randomSource = State.createRandomSource(setup.worldSeed ^ 0x9e3779b9);
     hasRecordedEnding = false;
-    deferredMap = null;
+    deferredMap = null; pendingChapterEnd = null; lastAutoSheetDay = -1;
     millisecondsIntoDay = 0;
     services.recordJourneyStart({ archetypeId: setup.archetypeId });
     trackEvent('start', setup.archetypeId, { 8: 'sep', 9: 'oct', 10: 'nov' }[setup.startMonthIndex]);
@@ -589,13 +620,15 @@
 
   /** Runs a trade or service action and shows a notice if it was refused. */
   function applyTrade(result) {
-    if (result.reason) { UI().showNotice(result.reason, 'warning'); return; }
+    if (result.reason) {
+      if (result.reasonCode === 'load') { UI().openLoadBlocked(Engine.getLoadRemedies(gameState), 'firstLoad'); return; }
+      UI().showNotice(result.reason, 'warning');
+      return;
+    }
     commitState(result.state, { shouldAlert: false });
   }
 
   // ---- actions ---------------------------------------------------------------
-
-  const draftUpdate = (patch) => { openingDraft = { ...openingDraft, ...patch }; renderOpening(); };
 
   /** @type {Object<string, (argument:string|undefined, source:HTMLElement)=>void>} */
   const ACTIONS = {
@@ -606,7 +639,7 @@
       startOpening();
     },
     confirmNewJourney() { UI().closeAllModals(); startOpening(); },
-    quickStart() { const last = State.loadLastSetup(); if (last) { openingSeed = createSeedFromClock(); beginJourneyFromDraft({ ...defaultDraft(), ...last }); } },
+    quickStart() { const last = State.loadLastSetup(); if (last) { openingSeed = createSeedFromClock(); trackEvent('intro', 'quick'); beginJourneyFromDraft({ ...defaultDraft(), ...last }); } },
     continueGame() {
       const loaded = State.loadGame();
       if (loaded.status !== 'ok') { showTitleScreen(); return; }
@@ -619,36 +652,96 @@
       showTitleScreen();
     },
 
-    // opening
-    openingArchetype(argument) { draftUpdate({ archetypeId: argument, leaderName: '' }); },
-    openingNext() {
-      if (openingStep === 0) { const typed = UI().readOpeningName(); openingDraft = { ...openingDraft, leaderName: State.sanitizeText(typed, Config.LIMITS.MAX_NAME_LENGTH, '') }; }
-      openingStep = Math.min(OPENING_STEPS - 1, openingStep + 1);
-      renderOpening();
+    // start
+    startMerchant(argument) { startUpdate({ archetypeId: argument, leaderName: '', extraAnimals: argument === 'persian' ? ['donkey'] : [] }); },
+    startToggleCandidate(argument) {
+      const chosen = startDraft.candidateIds;
+      if (chosen.includes(argument)) { startUpdate({ candidateIds: chosen.filter((id) => id !== argument) }); return; }
+      if (chosen.length >= 3) { UI().showNotice(copy('start.full'), 'warning'); return; }
+      startUpdate({ candidateIds: [...chosen, argument] });
     },
-    openingBack() {
-      if (openingStep >= 2 && openingStep <= 4 && openingDraft.candidateIds.length > openingStep - 2) openingDraft = { ...openingDraft, candidateIds: openingDraft.candidateIds.slice(0, openingStep - 2) };
-      else if (openingStep === 5) openingDraft = { ...openingDraft, candidateIds: openingDraft.candidateIds.slice(0, 2) };
-      openingStep = Math.max(0, openingStep - 1);
-      renderOpening();
+    startToggleMore() { startUpdate({}); isStartMoreOpen = !isStartMoreOpen; renderStart(); },
+    startShare(argument) { startUpdate({ cargoShare: Number(argument) }); },
+    startMonth(argument) { startUpdate({ startMonthIndex: Number(argument) }); },
+    startPacks(argument) { const [kind, delta] = argument.split(':'); const key = kind === 'rations' ? 'rationPacks' : 'feedPacks'; startUpdate({ [key]: Math.max(0, Math.min(60, startDraft[key] + Number(delta))) }); },
+    startReason(argument) { startUpdate({ subplotId: argument }); },
+    startBegin() {
+      if (startDraft.candidateIds.length !== 3) return;
+      if (isStartMoreOpen) startDraft = { ...startDraft, leaderName: State.sanitizeText(UI().readStartName(), Config.LIMITS.MAX_NAME_LENGTH, '') };
+      const isCustom = isStartMoreOpen || startDraft.archetypeId !== 'persian' || startDraft.candidateIds.some((id) => !START_PARTY_BY_DEFAULT.includes(id));
+      trackEvent('intro', isCustom ? 'custom' : 'quick');
+      beginJourneyFromDraft(startDraft);
     },
-    openingShare(argument) { draftUpdate({ cargoShare: Number(argument) }); },
-    openingShareRange(argument) { draftUpdate({ cargoShare: Math.max(0.1, Math.min(0.9, Number(argument) / 100)) }); },
-    openingCandidate(argument) { openingDraft = { ...openingDraft, candidateIds: [...openingDraft.candidateIds.slice(0, openingStep - 2), argument] }; openingStep += 1; renderOpening(); },
-    openingAnimal(argument) { draftUpdate({ extraAnimals: [...openingDraft.extraAnimals, argument] }); },
-    openingAnimalUndo() { draftUpdate({ extraAnimals: openingDraft.extraAnimals.slice(0, -1) }); },
-    openingPacks(argument) { const [kind, delta] = argument.split(':'); const key = kind === 'rations' ? 'rationPacks' : 'feedPacks'; draftUpdate({ [key]: Math.max(0, Math.min(60, openingDraft[key] + Number(delta))) }); },
-    openingMonth(argument) { draftUpdate({ startMonthIndex: Number(argument) }); },
-    openingPace(argument) { draftUpdate({ pace: argument }); },
-    openingRations(argument) { draftUpdate({ rationLevel: argument }); },
-    openingScout(argument) { draftUpdate({ scout: argument === 'yes' }); },
-    openingReason(argument) { draftUpdate({ subplotId: argument }); },
-    openingSkip() {
-      trackEvent('intro', 'skipped');
-      const last = State.loadLastSetup();
-      beginJourneyFromDraft(last ? { ...defaultDraft(), ...last } : { ...openingDraft, candidateIds: openingDraft.candidateIds });
+
+    // story: notes, letters, map, chapters
+    dismissNote(argument) { commitState(Story.markCoachNoteSeen(gameState, argument)); },
+    openLetter(argument) {
+      const letter = Story.findLetter(argument);
+      if (!letter) return;
+      if (!gameState.story.lettersOpened.includes(letter.id)) {
+        trackEvent('letter', letter.id, 'opened');
+        commitState(Story.markLetterOpened(gameState, letter.id), { shouldAlert: false });
+      }
+      UI().openLetter(letter);
     },
-    openingFinish() { trackEvent('intro', 'finished'); beginJourneyFromDraft(openingDraft); },
+    openMap() {
+      const trail = RouteMap().getJourneyTrail(gameState);
+      UI().showJourneyMap(trail, { title: 'The road so far', caption: `${trail.kosTravelled} of ${trail.totalKos} kos behind you.`, description: `Map of the route. ${trail.kosTravelled} of ${trail.totalKos} kos travelled.`, buttonLabel: 'Close' });
+    },
+    chapterContinue() {
+      const ending = Story.getChapterEndingAt(gameState.nodeId);
+      const number = ending ? ending.number : Story.getChapterNumberForNode(gameState.nodeId);
+      UI().closeChapterEnd();
+      commitState(State.setFlag(State.setFlag(gameState, `chapter_done_${number}`, true), `chapterStart_${number + 1}`, true), { shouldAlert: false });
+      offerDeferredMap();
+    },
+    chapterRest() {
+      const chapter = Story.getChapterEndingAt(gameState.nodeId);
+      const number = chapter ? chapter.number : gameState.story.chapterNumber;
+      UI().closeChapterEnd();
+      gameState = State.setFlag(gameState, `chapter_done_${number}`, true);
+      saveNow();
+      trackEvent('chapter', String(number), 'rest');
+      gameState = null; deferredMap = null; pendingChapterEnd = null;
+      showTitleScreen();
+    },
+    fixReadiness(argument) {
+      const readiness = Engine.getLegReadiness(gameState);
+      if (!readiness) return;
+      if (argument === 'food' || argument === 'feed') {
+        const key = argument === 'food' ? 'food' : 'feed';
+        let state = gameState;
+        // Buy the packs the check asked for, then top up one at a time while it still says short (its day count rounds down).
+        for (let index = 0; index < 12; index += 1) {
+          if (index > 0 && Engine.getLegReadiness(state)[key].isOk) break;
+          const result = Engine.buySupply(state, argument === 'food' ? 'rations' : 'feeds');
+          if (result.reason) {
+            if (result.reasonCode === 'load') { commitState(state, { shouldAlert: false }); UI().openLoadBlocked(Engine.getLoadRemedies(state), 'firstLoad'); return; }
+            commitState(state, { shouldAlert: false }); UI().showNotice(result.reason, 'warning'); return;
+          }
+          state = result.state;
+        }
+        commitState(state, { shouldAlert: false });
+        return;
+      }
+      if (argument === 'money') {
+        const shortBy = readiness.money.costRupees - readiness.money.haveRupees;
+        let state = gameState;
+        for (let guard = 0; guard < 6 && state.money < readiness.money.costRupees && state.cargo.units >= 1; guard += 1) {
+          const sold = State.sellCargoLot(state, 0.25);
+          if (sold === state) break;
+          state = sold;
+        }
+        commitState(state, { shouldAlert: false });
+        if (shortBy > 0 && state.money < readiness.money.costRupees) UI().showNotice('Selling cargo did not cover it. The road will cost more than your purse.', 'warning');
+      }
+    },
+    loadRemedy(argument) {
+      const result = Engine.applyLoadRemedy(gameState, argument);
+      UI().closeTopSheet();
+      if (result.reason) { UI().showNotice(result.reason, 'warning'); return; }
+      commitState(result.state, { shouldAlert: false });
+    },
 
     // sheets
     openCodex() { UI().openCodex(gameState); },
@@ -665,7 +758,7 @@
 
     // feedback
     openFeedback() { trackEvent('feedback-open'); },
-    rateEnjoyment(argument) { trackEvent('rating', argument); UI().showRatingThanks('Thank you. Your answer was counted anonymously.'); },
+    rateEnjoyment(argument) { trackEvent('rating', argument); UI().showRatingThanks('Thank you. Your answer was counted anonymously.'); if (gameState) gameState = State.setFlag(gameState, 'rated', true); },
     rateLearning(argument) { trackEvent('learned', argument); UI().showRatingThanks('Thank you. Your answer was counted anonymously.'); },
     exportSave() { downloadSaveFile(); },
     importSave(argument, source) { importSaveFile(source); },
@@ -675,7 +768,6 @@
     // HUD and tabs
     toggleHud() { UI().toggleHudExpanded(); renderCurrent(); },
     selectTab(argument) { UI().setStopTab(argument); UI().showStop(gameState); },
-    dismissCoach() { commitState(State.setFlag(gameState, 'coachDismissed', true)); },
 
     // town
     buySupply(argument) { applyTrade(Engine.buySupply(gameState, argument)); },
@@ -737,6 +829,7 @@
     chooseEncounter(argument) {
       const previousView = Events.getView(gameState);
       if (gameState.pending && gameState.pending.kind === 'crossing') trackEvent('cross', gameState.pending.data.riverId, argument);
+      if (gameState.pending && gameState.pending.id === Story.CRISIS_ID) trackEvent('crisis', 'camel', argument);
       stateBeforeChoice = gameState;
       const outcome = Events.choose(gameState, argument, randomSource, options());
       if (!outcome) return;
@@ -787,7 +880,15 @@
     UI().applySettings(settings);
     UI().initialize({ rootElement, onAction: dispatchAction });
     document.addEventListener('visibilitychange', pauseAndSaveWhenHidden);
-    window.addEventListener('pagehide', saveNow);
+    window.addEventListener('pagehide', () => {
+      saveNow();
+      // v4 F6: which chapter and screen people quit on. sendBeacon survives the page closing.
+      if (analyticsRemote && gameState && namespace.Analytics) {
+        const screenName = gameState.phase === 'ended' ? 'end' : (gameState.pending ? 'dialog' : (gameState.phase === 'road' ? 'road' : 'stop'));
+        const path = namespace.Analytics.buildEventPath('quit', String(Story.getChapterNumberForNode(gameState.nodeId)), screenName);
+        if (path) analyticsRemote.trackEventOnClose(path);
+      }
+    });
     showTitleScreen();
     if (analyticsRemote) analyticsRemote.trackPageview();
     if (namespace.Analytics) trackEvent('device', namespace.Analytics.classifyDevice(window.innerWidth));

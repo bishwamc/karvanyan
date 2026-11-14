@@ -95,7 +95,7 @@
   // Speed (GDD 7.3)
   // ---------------------------------------------------------------------------
 
-  const TERRAIN_FACTOR = Object.freeze({ plain: 1, hill: 0.9, pass: 0.85, delta: 0.8, river: 1 });
+  const TERRAIN_FACTOR = Object.freeze({ plain: 1, hill: 0.9, pass: 0.85, delta: TUNING.DELTA_TERRAIN_FACTOR, river: 1 });
 
   function hasHire(state, type) { return state.hired.some((hire) => hire.type === type); }
 
@@ -109,7 +109,8 @@
       : state.animals.reduce((sum, animal) => sum + Config.ANIMALS[animal.type].speed * (0.75 + 0.25 * animal.hp / 100), 0) / state.animals.length;
     const slowCount = state.party.filter((member) => member.isAlive && member.mods && member.mods.slow).length;
     const weakFactor = Math.pow(1 - TUNING.WEAK_SPEED_PENALTY, State.getWeakCount(state));
-    return pace.kosPerDay * pace.speedFactor * terrain * Config.WEATHER[weatherKey].speed * State.getLoadFactor(state)
+    const crisisSlowdown = (state.flags.slowUntil || 0) > state.dayIndex ? Config.TUNING.CRISIS_SLOW_FACTOR : 1;
+    return crisisSlowdown * pace.kosPerDay * pace.speedFactor * terrain * Config.WEATHER[weatherKey].speed * State.getLoadFactor(state)
       * Math.min(1.3, animalSpeed) * weakFactor * Math.pow(0.97, slowCount) * (mods.speedMult || 1);
   }
 
@@ -132,6 +133,89 @@
       feedDays: Math.floor(state.supplies.feeds / feedsNeeded),
       destination: World.findNode(edge.to).name,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Leg brief and readiness check (v4 N6) and load remedies (v4 F5)
+  // ---------------------------------------------------------------------------
+
+  const THREAT_WORDS = Object.freeze({ bandit: 'bandits', exposure: 'cold', disease: 'fever', flood: 'floods', wildlife: 'wild animals', authority: 'officials', theft: 'thieves' });
+  const THREAT_ORDER = Object.freeze(['bandit', 'exposure', 'disease', 'flood', 'wildlife', 'authority', 'theft']);
+
+  /**
+   * What the next leg looks like, in the words a merchant would use (distance, days, market, tolls, main danger).
+   * @param {Object} state a state at a stop
+   * @returns {{stopName:string, kos:number, days:number, hasMarket:boolean, isTollLikely:boolean, threatWord:string, tip:string}|null}
+   */
+  function getLegBrief(state) {
+    const edge = World.getOutgoingEdges(state.nodeId)[0];
+    if (!edge) return null;
+    const destination = World.findNode(edge.to);
+    const region = World.getRegion(edge.region);
+    let threatKey = THREAT_ORDER[0];
+    THREAT_ORDER.forEach((key) => { if ((region.threat[key] || 0) > (region.threat[threatKey] || 0)) threatKey = key; });
+    const threatWord = edge.crossings.length > 0 && (region.threat[threatKey] || 0) < 4 ? 'a river crossing' : THREAT_WORDS[threatKey];
+    return {
+      stopName: destination.name, kos: edge.kos, days: estimateLegDays(state, edge), hasMarket: destination.tier !== 'none',
+      isTollLikely: destination.id === 'khyber' || destination.id === 'delhi' || region.threat.authority >= 3,
+      threatWord, tip: region.signature,
+    };
+  }
+
+  /**
+   * Three lines a player checks before setting out: food, feed and money, each green or red.
+   * "Need" is the days of the leg plus a margin of safety (Config.TUNING.READINESS_MARGIN_DAYS), and counts no grazing.
+   * @param {Object} state a state at a stop
+   * @returns {{food:Object, feed:Object, money:Object, isAllReady:boolean}|null}
+   */
+  function getLegReadiness(state) {
+    const edge = World.getOutgoingEdges(state.nodeId)[0];
+    if (!edge) return null;
+    const forecast = computeSupplyForecast(state, edge);
+    const needDays = forecast.legDays + TUNING.READINESS_MARGIN_DAYS;
+    const rationsPerDay = State.getRationsPerDay(state);
+    const feedsPerDay = Math.max(0.01, State.getFeedsPerDay(state, { grazeShare: 0 }) * 1.05);
+    const packsFor = (days, perDay, have, packSize) => Math.max(0, Math.ceil(((days * perDay) - have) / packSize));
+    const food = { haveDays: forecast.rationDays, needDays, isOk: forecast.rationDays >= needDays, packsToBuy: packsFor(needDays, rationsPerDay, state.supplies.rations, Config.PRICES.RATION_PACK_SIZE) };
+    const feed = { haveDays: forecast.feedDays, needDays, isOk: forecast.feedDays >= needDays, packsToBuy: packsFor(needDays, feedsPerDay, state.supplies.feeds, Config.PRICES.FEED_PACK_SIZE) };
+    const feeFactor = Config.CROSSING.FEE_BASE_FACTOR + Config.CROSSING.FEE_PER_ANIMAL * state.animals.length;
+    const ferryCost = edge.crossings.reduce((sum, crossing) => sum + Math.round(World.RIVERS[crossing.river].ferryPrice * feeFactor), 0);
+    const tollCost = edge.to === 'khyber' ? 60 : (edge.to === 'delhi' ? 40 : 0);
+    const lodgingCost = State.getLodgingFee(state) * Math.ceil(forecast.legDays / 2);
+    const costRupees = ferryCost + tollCost + lodgingCost;
+    const money = { haveRupees: state.money, costRupees, isOk: state.money >= costRupees };
+    return { food, feed, money, isAllReady: food.isOk && feed.isOk && money.isOk };
+  }
+
+  /**
+   * What a player can do when a purchase is blocked by load: sell two lots of cargo, or buy another animal.
+   * @returns {Array<{id:'sellLots'|'buyDonkey', label:string}>}
+   */
+  function getLoadRemedies(state) {
+    const remedies = [];
+    const node = World.findNode(state.nodeId);
+    if (state.phase !== 'stop') return remedies;
+    if (node.tier !== 'none' && state.cargo && state.cargo.units >= 1) remedies.push({ id: 'sellLots', label: 'Sell 2 lots' });
+    if (node.hasAnimalMarket && state.money >= Config.ANIMALS.donkey.price) remedies.push({ id: 'buyDonkey', label: 'Buy a donkey' });
+    return remedies;
+  }
+
+  /** Carries out one load remedy. Returns {state, reason} like the other shopping functions. */
+  function applyLoadRemedy(state, remedyId) {
+    if (remedyId === 'sellLots') {
+      if (!state.cargo || state.cargo.units < 1) return { state, reason: 'You have no cargo to sell.' };
+      const lots = Math.min(2, state.cargo.units);
+      const sold = State.sellCargoLot(state, lots / state.cargo.units - 1e-6);
+      return sold === state ? { state, reason: 'Nobody here will buy your cargo.' } : { state: sold, reason: null };
+    }
+    if (remedyId === 'buyDonkey') {
+      const ready = State.ensurePool(state, state.nodeId);
+      const listings = ready.pools[state.nodeId].animals.filter((listing) => listing.type === 'donkey' || listing.type === 'mule' || listing.type === 'ox');
+      const cheapest = [...listings].sort((first, second) => getAnimalPrice(ready, first) - getAnimalPrice(ready, second))[0];
+      if (!cheapest) return { state, reason: 'No pack animal is for sale here.' };
+      return buyAnimal(ready, cheapest.id);
+    }
+    return { state, reason: 'Unknown choice.' };
   }
 
   // ---------------------------------------------------------------------------
@@ -206,7 +290,7 @@
     const price = State.getBuyPrice(state, kind);
     const amount = SUPPLY_PACK_SIZE[kind];
     if (state.money < price) return { state, reason: 'Not enough rupees.' };
-    if (State.getFreeCapacity(state) < amount * SUPPLY_LU[kind] - 1e-9) return { state, reason: 'Your animals cannot carry more.' };
+    if (State.getFreeCapacity(state) < amount * SUPPLY_LU[kind] - 1e-9) return { state, reason: 'Your animals cannot carry more.', reasonCode: 'load' };
     let next = State.ensurePool(state, state.nodeId);
     if (kind === 'medicine') {
       const pool = next.pools[state.nodeId];
@@ -299,11 +383,23 @@
     return State.makeNote(State.adjustResources(state, { [item]: -Math.min(amount, state.supplies[item]) }), `You leave some ${item} behind.`);
   }
 
-  /** Cheapest-first automatic jettison (used by bots, and as a "choose for me" button). */
+  /**
+   * What the caravan drops first. Cargo is the merchant's profit but not a matter of life and death, so it goes first;
+   * rations go last because food is the one thing a player cannot do without (v4 F4).
+   */
+  const JETTISON_ORDER = Object.freeze(['cargo', 'covers', 'feeds', 'rations', 'medicine']);
+
+  /** How many of one jettison item the caravan holds (cargo counts in lots, supplies in single units). */
+  function countJettisonItem(state, item) {
+    if (item === 'cargo') return state.cargo ? state.cargo.units : 0;
+    return state.supplies[item] || 0;
+  }
+
+  /** Cargo first, then covers, feeds, rations, medicine (used by bots, and as a "choose for me" button). */
   function autoJettison(state) {
     let next = state;
     for (let guard = 0; guard < 400 && getOverload(next) > 0; guard += 1) {
-      const order = ['covers', 'feeds', 'rations', 'cargo', 'medicine'];
+      const order = JETTISON_ORDER;
       const item = order.find((candidate) => (candidate === 'cargo' ? next.cargo && next.cargo.units >= 1 : next.supplies[candidate] >= 1));
       if (!item) break;
       next = jettison(next, item);
@@ -420,8 +516,17 @@
       .reduce((sum, hire) => sum + Config.SERVICES.guard.tiers.find((tier) => tier.id === hire.tier).strength, 0);
   }
 
+  /** True on the third travel day of Chapter 1 and every later day until the crisis has been answered. */
+  function shouldFireLameCamelCrisis(state) {
+    if (!namespace.Story || state.flags.crisis_done || state.seenStorylets.includes(namespace.Story.CRISIS_ID)) return false;
+    if (state.stats.travelDays < Config.TUNING.CRISIS_TRAVEL_DAY || State.getEdge(state) === null) return false;
+    return namespace.Story.getChapterNumberForNode(State.getEdge(state).from) === 1 && state.animals.length > 0;
+  }
+
   /** At most one road event per day (GDD 7.7): dilemma, checkpoint, or a small encounter. */
   function rollRoadEvent(state, random) {
+    // The scripted first stake of the game: always on the third travel day of the first leg (or the next one) (v4 N4).
+    if (shouldFireLameCamelCrisis(state)) return { ...state, pending: { kind: 'storylet', id: namespace.Story.CRISIS_ID } };
     const region = State.getRegionOfState(state);
     const mods = State.getModifiers(state);
     const scoutFactor = hasHire(state, 'scout') ? 1 - TUNING.SCOUT_EVENT_REDUCTION : 1;
@@ -585,7 +690,7 @@
         const isHeat = ['hot', 'extreme'].includes(state.weather.today);
         if (sheltered) exposure *= isHeat ? 0.5 : 0;
         else exposure *= TUNING.CAMP_EXPOSURE_FACTOR;
-        if (isCold) exposure *= State.getMod(mods, 'coldMult', 1) * (member.mods.coldMult || 1);
+        if (isCold) exposure *= State.getMod(mods, 'coldMult', 1); // party-wide already includes this member's own flaw
         if (isHeat && lowland) exposure *= State.getMod(mods, 'lowlandHeatMult', 1);
         delta += exposure;
         if (exposure < 0) parts.push([isCold ? 'exposure' : (isHeat ? 'heat' : 'exposure'), -exposure]);
@@ -1016,7 +1121,7 @@
   namespace.Engine = Object.freeze({
     drawWeatherFor, computeWeatherChain, getForecast, getRiverLevel, computeKosToday, estimateLegDays, computeSupplyForecast,
     getRegionBriefing, addRumours, buySupply, buyAnimal, getAnimalPrice, getHirePrice, hireService,
-    getOverload, jettison, autoJettison, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
+    getOverload, getLegBrief, getLegReadiness, getLoadRemedies, applyLoadRemedy, jettison, autoJettison, countJettisonItem, JETTISON_ORDER, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
     pickSkin, restDay, estimateRestCost, detectAlerts, getNewLogEntries, getDayHoldMilliseconds, getNextSupplyLevel, getSupplyBand, applySupplyWarnings, resolveProvision, passCityDays, estimateStayCost, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
   });
 })(window.Karvanyan);

@@ -104,13 +104,18 @@ test('Khyber toll: cargo cannot pay; unaffordable options are disabled but pushi
   assert.equal(view.choices.find((choice) => choice.id === 'push').reason, null);
 });
 
-test('river crossing choices depend on the water level', () => {
+test('river crossing choices depend on the water level; the Indus is never forded or swum (v4 F2)', () => {
   const pending = { kind: 'crossing', id: 'indus', data: { key: 'attock-hasan_abdal@1', riverId: 'indus', name: 'the Indus' } };
   const low = Events.getView({ ...newGame({ startMonthIndex: 10 }), nodeId: 'attock', edgeId: 'attock-hasan_abdal', phase: 'road', pending });
-  assert.ok(low.choices.some((choice) => choice.id === 'ford'));
+  assert.ok(low.choices.some((choice) => choice.id === 'ferry' || choice.id === 'bridge'));
+  assert.ok(!low.choices.some((choice) => choice.id === 'ford' || choice.id === 'swim'));
   const flood = Events.getView({ ...newGame({ startMonthIndex: 8 }), edgeId: 'attock-hasan_abdal', phase: 'road', pending, weather: { today: 'monsoon', forecast: 'monsoon', history: ['monsoon', 'monsoon', 'monsoon'] } });
-  assert.ok(!flood.choices.some((choice) => choice.id === 'ford'));
+  assert.ok(!flood.choices.some((choice) => choice.id === 'ford' || choice.id === 'swim'));
   assert.ok(!flood.choices.some((choice) => choice.id === 'ferry'));
+  // A river that can be forded still offers both rough options at low water.
+  const fordable = Object.keys(World.RIVERS).find((id) => World.RIVERS[id].isFordable !== false);
+  const other = Events.getView({ ...newGame({ startMonthIndex: 10 }), phase: 'road', pending: { kind: 'crossing', id: fordable, data: { key: `${fordable}@1`, riverId: fordable, name: fordable } } });
+  assert.ok(other.choices.some((choice) => choice.id === 'ford'));
 });
 
 test('services: one guide per region; guards come from the stop pool', () => {

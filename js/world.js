@@ -179,7 +179,14 @@
   function getRegion(regionId) { return REGIONS[regionId] || null; }
   /** Edge leaving a node. The graph allows several in future; this version has one. */
   function getOutgoingEdges(nodeId) { return EDGES.filter((edge) => edge.from === nodeId); }
+  const FINAL_MARKET_NODE_ID = 'makhsusabad';
   function getNodeIndex(nodeId) { return NODES.findIndex((node) => node.id === nodeId); }
+  /** Kos from Kabul to a stop along the whole road (0 for Kabul). */
+  function getKosBefore(nodeId) {
+    const index = getNodeIndex(nodeId);
+    if (index <= 0) return 0;
+    return EDGES.slice(0, index).reduce((sum, edge) => sum + edge.kos, 0);
+  }
 
   /** @param {Date} date @returns {number} 0..5 */
   function getMonthBand(date) {
@@ -203,7 +210,7 @@
   }
 
   namespace.World = Object.freeze({
-    REGIONS, NODES, EDGES, RIVERS, CLIMATE, WEATHER_PERSISTENCE, FIRST_NODE_ID, FINAL_NODE_ID, TOTAL_KOS,
-    findNode, findEdge, getRegion, getOutgoingEdges, getNodeIndex, getMonthBand, getBaseRiverLevel, getClimateWeights,
+    REGIONS, NODES, EDGES, RIVERS, CLIMATE, WEATHER_PERSISTENCE, FIRST_NODE_ID, FINAL_NODE_ID, FINAL_MARKET_NODE_ID, TOTAL_KOS,
+    findNode, findEdge, getRegion, getOutgoingEdges, getNodeIndex, getKosBefore, getMonthBand, getBaseRiverLevel, getClimateWeights,
   });
 })(window.Karvanyan);

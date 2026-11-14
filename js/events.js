@@ -18,7 +18,7 @@
   const State = namespace.State;
   const engine = () => namespace.Engine;
 
-  const STORYLETS = new Map(Content.STORYLETS.map((storylet) => [storylet.id, storylet]));
+  const STORYLETS = new Map([...Content.STORYLETS, ...(namespace.Story ? namespace.Story.STORYLETS : [])].map((storylet) => [storylet.id, storylet]));
   const CHECKPOINT_IDS = Object.freeze(['khyber_toll', 'delhi_checkpoint', 'checkpoint_generic']);
   const STRANGER_IDS = Object.freeze(['stranger_trade', 'stranger_help', 'traveller_news']);
 
@@ -77,7 +77,10 @@
       if (effect.quality && effect.quality[1] !== 0) chips.push(`${effect.quality[0]} ${signed(effect.quality[1])}`);
       if (effect.wait) chips.push(`${effect.wait} day${effect.wait > 1 ? 's' : ''}`);
       if (effect.waitUntilMonth !== undefined) chips.push('until spring');
-      if (effect.animalLoss) chips.push('-1 animal');
+      if (effect.animalLoss || effect.loseStrongestAnimal) chips.push('-1 animal');
+      if (effect.cargoLots) chips.push(`${signed(effect.cargoLots)} lots of cargo`);
+      if (effect.allAnimalHp) chips.push('animals tire');
+      if (effect.slowDays) chips.push('slower for a few days');
       if (effect.sellShare) chips.push(`sell ${Math.round(effect.sellShare * 100)}% of cargo`);
       if (effect.chance) chips.push('risk');
     });
@@ -116,9 +119,17 @@
       if (effect.quality) next = State.addQuality(next, effect.quality[0], effect.quality[1]);
       if (effect.flag) next = State.setFlag(next, effect.flag, true);
       if (effect.wait) waitDays += effect.wait;
+      if (typeof effect.lostDay === 'number') waitDays += effect.lostDay; // v3 content used lostDay but nothing read it
       if (effect.keepSupplies) keepSupplies = true;
       if (effect.waitUntilMonth !== undefined) waitDays += State.daysUntilMonthStart(next, effect.waitUntilMonth);
       if (effect.animalLoss) next = State.loseAnimal(next, null);
+      if (typeof effect.cargoLots === 'number' && next.cargo) next = { ...next, cargo: { ...next.cargo, units: Math.max(0, next.cargo.units + effect.cargoLots) } };
+      if (typeof effect.allAnimalHp === 'number') next.animals.forEach((animal) => { next = State.changeAnimalHealth(next, animal.id, effect.allAnimalHp); });
+      if (typeof effect.slowDays === 'number') next = State.setFlag(next, 'slowUntil', next.dayIndex + effect.slowDays);
+      if (effect.loseStrongestAnimal) {
+        const strongest = [...next.animals].sort((first, second) => Config.ANIMALS[second.type].capacity - Config.ANIMALS[first.type].capacity)[0];
+        if (strongest) next = State.changeAnimalHealth(next, strongest.id, -999);
+      }
       if (effect.animalHp) {
         const weakest = [...next.animals].sort((first, second) => first.hp - second.hp)[0];
         if (weakest) next = State.updateAnimal(next, weakest.id, { hp: Math.min(100, weakest.hp + effect.animalHp) });
@@ -225,7 +236,10 @@
   function resolveToll(state, pending, choiceId, random) {
     const { toll, haggle } = getTollContext(state, pending.data.baseToll);
     const mods = State.getModifiers(state);
-    const done = (next, message) => ({ state: State.setFlag(State.setFlag(next, 'khyber_done', pending.id === 'khyber_toll' ? true : next.flags.khyber_done), 'delhi_checked', pending.id === 'delhi_checkpoint' ? true : next.flags.delhi_checked), message });
+    // Only the checkpoint that was actually resolved is marked done. (v3 set the other flag from `undefined`, which
+    // State.setFlag turned into true, so a toll could be skipped later.)
+    const completedFlag = { khyber_toll: 'khyber_done', delhi_checkpoint: 'delhi_checked' }[pending.id];
+    const done = (next, message) => ({ state: completedFlag ? State.setFlag(next, completedFlag, true) : next, message });
     const payAmount = (next, amount) => State.adjustResources(next, { money: -amount });
     switch (choiceId) {
       case 'pay': return done(payAmount(state, toll), `You pay ${toll} rupees and are waved through.`);
@@ -334,7 +348,8 @@
     const soakChip = isCovered ? 'covers protect the load' : 'soaks cargo, food and medicine';
     const fordChance = isFordable ? getAnimalLossChance(state, CROSSING.FORD_ANIMAL_LOSS, level, knowledge) : null;
     if (fordChance !== null) choices.push({ id: 'ford', label: 'Ford the river with the animals', tone: 'risky', chips: ['free', `${percentText(fordChance)} risk of losing an animal`, soakChip], reason: null });
-    const swimChance = getAnimalLossChance(state, CROSSING.SWIM_ANIMAL_LOSS, level, knowledge);
+    // Nobody swims loaded animals across a river that cannot be forded, such as the Indus at Attock (v4 F2).
+    const swimChance = isFordable ? getAnimalLossChance(state, CROSSING.SWIM_ANIMAL_LOSS, level, knowledge) : null;
     if (swimChance !== null) choices.push({ id: 'swim', label: 'Swim the animals across', tone: 'danger', chips: ['free', `${percentText(swimChance)} risk of losing an animal`, soakChip, 'irreversible'], reason: null });
     return choices.map((choice) => ({ ...choice, chips: choice.chips.filter(Boolean) }));
   }
@@ -494,10 +509,13 @@
     ];
   }
 
+  // Same order the automatic choice uses: cargo, then covers, then feed, then food (v4 F4).
   const JETTISON_CHOICES = Object.freeze([
-    { id: 'rations', label: 'Leave 10 rations behind' }, { id: 'feeds', label: 'Leave 10 feeds behind' },
-    { id: 'covers', label: 'Leave a waxed cover behind' }, { id: 'cargo', label: 'Leave one lot of cargo behind' },
-    { id: 'auto', label: 'Let the handlers choose' },
+    { id: 'cargo', label: 'Leave one lot of cargo behind', noneReason: 'You have no cargo left.' },
+    { id: 'covers', label: 'Leave a waxed cover behind', noneReason: 'You have no covers.' },
+    { id: 'feeds', label: 'Leave 10 feeds behind', noneReason: 'You have no feed to leave.' },
+    { id: 'rations', label: 'Leave 10 rations behind', noneReason: 'You have no rations to leave.' },
+    { id: 'auto', label: 'Let the handlers choose', noneReason: null },
   ]);
 
   // ---------------------------------------------------------------------------
@@ -515,9 +533,21 @@
     return `About ${stay.days} days in the city: ${stay.money} rupees for lodging${kept}`;
   }
 
+  /** Companion lines spoken in a storylet, only for roles that are alive in the party (v4 crisis scene). */
+  function buildSpokenLines(state, storylet) {
+    const spoken = [];
+    (storylet.lines || []).forEach((line) => {
+      const member = state.party.find((item) => item.isAlive && item.role === line.role);
+      if (member) spoken.push(line.text.replace('{name}', member.name));
+      else if (line.fallback) spoken.push(line.fallback);
+    });
+    return spoken;
+  }
+
   function storyletView(state, storylet) {
     return {
-      kind: 'storylet', id: storylet.id, icon: storylet.icon, title: storylet.title, paragraphs: storylet.text,
+      kind: 'storylet', id: storylet.id, icon: storylet.icon, title: storylet.title, imageId: storylet.imageId || null,
+      paragraphs: [...storylet.text, ...buildSpokenLines(state, storylet)],
       choices: storylet.choices.map((choice) => ({
         id: choice.id, label: choice.label, tone: choice.tone || 'safe',
         chips: [...describeEffects(choice.effects), ...(stayNote(state, choice.effects) ? [stayNote(state, choice.effects)] : [])],
@@ -549,8 +579,11 @@
     if (pending.kind === 'night') return { kind: 'night', icon: '🌙', title: 'Where do you sleep tonight?', paragraphs: ['A sarai is close. A camp costs nothing but the weather.'], choices: nightChoices(state) };
     if (pending.kind === 'jettison') {
       const over = engine().getOverload(state);
-      return { kind: 'jettison', icon: '⚖️', title: 'Too much load', paragraphs: [`Your animals are over capacity by ${over} load units. Drop something before moving on.`],
-        choices: JETTISON_CHOICES.map((choice) => ({ id: choice.id, label: choice.label, tone: 'risky', chips: [], reason: null })) };
+      return { kind: 'jettison', icon: '⚖️', title: 'Too much load', paragraphs: [`Your animals are carrying too much. Leave something behind before you set out.`],
+        choices: JETTISON_CHOICES.map((choice) => {
+          const hasNone = choice.id !== 'auto' && engine().countJettisonItem(state, choice.id) < 1;
+          return { id: choice.id, label: choice.label, tone: 'risky', chips: [], reason: hasNone ? choice.noneReason : null };
+        }) };
     }
     if (pending.kind === 'provision') return { kind: 'provision', icon: '🏹', title: 'A rest day', paragraphs: ['You rest. You can also spend the day finding food.'], choices: [] };
     return null;

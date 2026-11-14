@@ -21,6 +21,9 @@
   const MONTH_IDS = Object.freeze({ 8: 'sep', 9: 'oct', 10: 'nov' });
   const DEATH_CAUSES = Object.freeze(['hunger', 'exhaustion', 'violence', 'fever', 'dysentery', 'heat', 'exposure', 'drowning', 'other']);
   const CROSSING_CHOICES = Object.freeze(['bridge', 'ferry', 'ferry2', 'premium', 'wait', 'ford', 'swim']);
+  const CHAPTER_IDS = Object.freeze(['1', '2', '3', '4', '5', '6']);
+  // Where a player was when the page closed. Lets the dashboard show which screen people leave on (v4 F6).
+  const QUIT_SCREENS = Object.freeze(['start', 'stop', 'road', 'sheet', 'ledger', 'letter', 'map', 'chapter']);
 
   /** Every event kind and, for each path segment after it, the complete list of values allowed there. */
   const EVENT_SHAPES = Object.freeze({
@@ -32,7 +35,11 @@
     rating: [['1', '2', '3', '4', '5']],
     learned: [['yes', 'little', 'no']],
     device: [['phone', 'tablet', 'desktop']],
-    intro: [['finished', 'skipped']],
+    intro: [['finished', 'skipped', 'quick', 'custom']],
+    chapter: [CHAPTER_IDS, ['done', 'rest']],
+    quit: [CHAPTER_IDS, QUIT_SCREENS],
+    crisis: [['camel'], ['leave_lots', 'spread', 'leave_rations', 'put_down']],
+    letter: [CHAPTER_IDS, ['opened']],
     'feedback-open': [],
   });
 
@@ -82,12 +89,24 @@
     const isEnabled = options.isEnabled || (() => true);
     const sendImageRequest = options.sendImageRequest || ((url) => { const image = new Image(); image.src = url; });
     const endpoint = `https://${code}.goatcounter.com/count`;
+    // A running counter keeps two events sent in the same millisecond from sharing one URL, which the
+    // browser would otherwise treat as a single cached image and send only once (v4 F1).
+    let requestCounter = 0;
+    const sendBeaconRequest = options.sendBeaconRequest || ((url) => {
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') return navigator.sendBeacon(url);
+      return false;
+    });
+
+    function buildUrl(path, title, isEvent) {
+      requestCounter += 1;
+      const query = new URLSearchParams({ p: path, t: title, e: isEvent ? 'true' : 'false', rnd: `${Date.now()}-${requestCounter}` });
+      return `${endpoint}?${query.toString()}`;
+    }
 
     function send(path, title, isEvent) {
       if (!isEnabled()) return Promise.resolve({ ok: false, reason: 'disabled' });
-      const query = new URLSearchParams({ p: path, t: title, e: isEvent ? 'true' : 'false', rnd: String(Date.now()) });
       try {
-        sendImageRequest(`${endpoint}?${query.toString()}`);
+        sendImageRequest(buildUrl(path, title, isEvent));
         return Promise.resolve({ ok: true });
       } catch (error) {
         return Promise.resolve({ ok: false, reason: 'send-failed' });
@@ -98,6 +117,21 @@
       trackEvent(path) {
         if (!isAllowedEventPath(path)) return Promise.resolve({ ok: false, reason: 'path-not-allowed' });
         return send(path, path, true);
+      },
+      /**
+       * Sends an event while the page is closing. Images are cancelled when a page unloads, so this uses
+       * sendBeacon, which the browser finishes after the page is gone (v4 F6). Falls back to an image request.
+       */
+      trackEventOnClose(path) {
+        if (!isAllowedEventPath(path)) return Promise.resolve({ ok: false, reason: 'path-not-allowed' });
+        if (!isEnabled()) return Promise.resolve({ ok: false, reason: 'disabled' });
+        try {
+          const wasQueued = sendBeaconRequest(buildUrl(path, path, true));
+          if (!wasQueued) sendImageRequest(buildUrl(path, path, true));
+          return Promise.resolve({ ok: true });
+        } catch (error) {
+          return Promise.resolve({ ok: false, reason: 'send-failed' });
+        }
       },
       /** One page view per load, so GoatCounter can show visits alongside the events. */
       trackPageview() {

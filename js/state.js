@@ -47,6 +47,7 @@
   const Config = namespace.Config;
   const World = namespace.World;
   const Content = namespace.Content;
+  const Story = namespace.Story;
 
   // ---------------------------------------------------------------------------
   // Numbers, text, hashing, random
@@ -422,6 +423,8 @@
     else if (kind === 'medicine') base = Config.PRICES.MEDICINE_BASE;
     else if (kind === 'covers') base = Config.PRICES.COVER_BASE;
     else return Infinity;
+    // The last big market before Dhaka sells rice and fodder cheaply, because boats bring both up the river (v4 F11).
+    if ((kind === 'rations' || kind === 'feeds') && state.nodeId === World.FINAL_MARKET_NODE_ID) base *= Config.PRICES.FINAL_MARKET_SUPPLY_FACTOR;
     return Math.max(1, Math.round(base * getMod(mods, 'buyMult', 1)));
   }
 
@@ -605,7 +608,9 @@
       stats: { travelDays: 0, restDays: 0, saraiNights: 0, campNights: 0, idleDays: 0, provisionRations: 0, rationsEaten: 0, treatments: 0, salesCities: [], servicesUsed: [], saraiEligibleNights: 0 },
       log: [{ dayIndex: 0, text: 'Your caravan gathers in Kabul at dawn.', serial: 1 }], isPaused: false, outcome: null,
       supplyWarning: { rations: 0, feeds: 0 },
+      story: null,
     };
+    state.story = Story.createStoryState({ nodeId: World.FIRST_NODE_ID, party });
 
     // Cargo is bought once at the Kabul price, capped by free capacity (GDD 3.4).
     state = ensurePool(state, World.FIRST_NODE_ID);
@@ -613,7 +618,13 @@
     const maxByMoney = Math.floor(cargoBudget / cargoDefinition.basePrice);
     state.cargo.units = Math.max(0, maxByMoney);
     const capacity = getCapacity(state);
-    const reservedForSupplies = Math.max(12, capacity * 0.3); // LU kept for food and fodder at the start
+    // Room kept for the food and fodder the player is about to buy, plus a free margin so the first town stop never
+    // starts with a caravan that cannot take on three more ration packs (v4 F3).
+    const plannedRationPacks = clampNumber(setup.rationPacks, 0, 60, 0);
+    const plannedFeedPacks = clampNumber(setup.feedPacks, 0, 60, 0);
+    const plannedSupplyLoad = Config.PRICES.RATION_PACK_SIZE * Config.UNITS.RATION_LU * plannedRationPacks
+      + Config.PRICES.FEED_PACK_SIZE * Config.UNITS.FEED_LU * plannedFeedPacks + Config.UNITS.MEDICINE_LU + (getModifiers(state).heavyPots || 0);
+    const reservedForSupplies = capacity * (1 - Config.TUNING.START_LOAD_LIMIT_SHARE) + plannedSupplyLoad;
     const maxByCapacity = Math.max(0, Math.floor((capacity - reservedForSupplies) / cargoDefinition.lu));
     state.cargo.units = Math.min(state.cargo.units, maxByCapacity);
     state.money += cargoBudget - state.cargo.units * cargoDefinition.basePrice; // unspent cargo budget returns to the purse
@@ -833,6 +844,36 @@
       log: Array.isArray(raw.log) ? raw.log.slice(-Config.LIMITS.MAX_LOG_ENTRIES).map((entry) => ({ dayIndex: Math.floor(clampNumber(entry && entry.dayIndex, 0, Config.LIMITS.MAX_DAYS, 0)), text: sanitizeText(entry && entry.text, 200, ''), serial: Math.floor(clampNumber(entry && entry.serial, 0, 1e9, 0)), level: entry && LOG_LEVELS.includes(entry.level) ? entry.level : undefined })).filter((entry) => entry.text).map((entry) => (entry.level ? entry : { dayIndex: entry.dayIndex, text: entry.text, serial: entry.serial })) : [],
       supplyWarning: (() => { const raw3 = raw.supplyWarning && typeof raw.supplyWarning === 'object' ? raw.supplyWarning : {}; return { rations: Math.floor(clampNumber(raw3.rations, 0, 3, 0)), feeds: Math.floor(clampNumber(raw3.feeds, 0, 3, 0)) }; })(),
       isPaused: true, outcome,
+      story: sanitizeStory(raw.story, raw),
+    };
+  }
+
+  /**
+   * Story state for a loaded save. A schema-2 save has none, so it gets safe defaults (spec 9.2): the chapter from the
+   * current stop, mood 60 for each living companion, the rival level with the player, and empty lists.
+   */
+  function sanitizeStory(rawStory, rawState) {
+    const source = rawStory && typeof rawStory === 'object' ? rawStory : {};
+    const base = Story.createStoryState({ nodeId: rawState.nodeId, party: Array.isArray(rawState.party) ? rawState.party.map((member) => ({ candidateId: member && findCandidate(member.candidateId) ? member.candidateId : null, isAlive: Boolean(member && member.isAlive) })) : [] });
+    const textList = (value, limit) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string').slice(0, limit).map((item) => item.slice(0, 40)) : []);
+    const numberMap = (value, maximum) => {
+      const result = {};
+      if (value && typeof value === 'object') Object.keys(value).slice(0, 40).forEach((key) => { if (typeof value[key] === 'number') result[key.slice(0, 40)] = clampNumber(value[key], 0, maximum, 0); });
+      return result;
+    };
+    const arcBeatsDoneById = {};
+    if (source.arcBeatsDoneById && typeof source.arcBeatsDoneById === 'object') Object.keys(source.arcBeatsDoneById).slice(0, 40).forEach((key) => { arcBeatsDoneById[key.slice(0, 40)] = textList(source.arcBeatsDoneById[key], 12); });
+    const coachNotesSeen = {};
+    if (source.coachNotesSeen && typeof source.coachNotesSeen === 'object') Object.keys(source.coachNotesSeen).slice(0, 20).forEach((key) => { if (source.coachNotesSeen[key] === true) coachNotesSeen[key.slice(0, 40)] = true; });
+    return {
+      chapterNumber: Story.getChapterNumberForNode(rawState.nodeId),
+      lettersOpened: textList(source.lettersOpened, 8).filter((id) => Story.findLetter(id)),
+      companionMoodById: Object.keys(source.companionMoodById || {}).length > 0 ? numberMap(source.companionMoodById, 100) : base.companionMoodById,
+      arcBeatsDoneById,
+      rivalKosOnRoute: typeof source.rivalKosOnRoute === 'number' ? clampNumber(source.rivalKosOnRoute, 0, World.TOTAL_KOS + 200, 0) : base.rivalKosOnRoute,
+      rumoursHeard: textList(source.rumoursHeard, 20),
+      coachNotesSeen,
+      strangerFavour: numberMap(source.strangerFavour, 100),
     };
   }
 
@@ -849,7 +890,8 @@
     try { envelope = JSON.parse(text); } catch { return { ...none, status: 'damaged' }; }
     if (!envelope || envelope.app !== 'karvanyan' || typeof envelope.schema !== 'number') return { ...none, status: 'damaged' };
     if (envelope.schema > Config.SAVE_SCHEMA_VERSION) return { ...none, status: 'newer' };
-    if (envelope.schema < Config.SAVE_SCHEMA_VERSION) return { ...none, status: 'damaged' };
+    // Schema 2 (v3) saves load into v4: sanitizeLoadedState fills in the new story fields (v4 spec 9.2, test Q9).
+    if (envelope.schema < Config.MIN_LOADABLE_SCHEMA_VERSION) return { ...none, status: 'damaged' };
     const state = sanitizeLoadedState(envelope.state);
     if (!state) return { ...none, status: 'damaged' };
     const checksumMatches = hashText(JSON.stringify(envelope.state)).toString(16) === envelope.checksum;
@@ -945,7 +987,7 @@
     getBuyPrice, getLodgingFee, getSeasonFactor, getMarketRecord, getCargoBasePrice, getCargoPriceRange, quoteSale, sellCargoLot, sellSurplus, sellAnimal, ensurePool,
     createNewGame, computeScore, computeSubplotBonus, finishJourney, getAnimalBodyValue,
     isStorageSupported: () => storage.isPersistent,
-    saveGame, loadGame, clearSavedGame, exportSaveText, importSaveText, parseSaveText, sanitizeLoadedState,
+    saveGame, loadGame, clearSavedGame, buildSaveText, exportSaveText, importSaveText, parseSaveText, sanitizeLoadedState,
     loadGraves, addGraves, loadTopScores, recordTopScore, loadSettings, saveSettings, loadLastSetup, saveLastSetup,
   });
 })(window.Karvanyan);

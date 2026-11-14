@@ -17,23 +17,23 @@
   // ---------------------------------------------------------------------------
   const CANDIDATES = Object.freeze([
     { id: 'naseer', role: 'interpreter', name: 'Naseer', strength: { localStorylets: 1 }, flaw: { haggleBonus: -0.1 }, strengthText: 'Four languages; opens local storylets.', flawText: 'Nervous with officials: haggle bonus halved.', line: 'Naseer speaks four tongues and fears one thing: men in good coats.' },
-    { id: 'mariam', role: 'interpreter', name: 'Mariam', strength: { tollMult: 0.9375 }, flaw: { theftMult: 1.1 }, strengthText: 'Tolls cost x0.75.', flawText: 'Draws attention: theft x1.1.', line: 'Mariam opens doors. Sometimes more doors than you wanted open.' },
+    { id: 'mariam', role: 'interpreter', name: 'Mariam', strength: { tollMult: 0.9375 }, flaw: { theftMult: 1.1 }, strengthText: 'Tolls cost a little less.', flawText: 'Draws attention: thieves notice her.', line: 'Mariam opens doors. Sometimes more doors than you wanted open.' },
     { id: 'tursun', role: 'interpreter', name: 'Tursun', strength: { northStorylets: 1 }, flaw: { eastHaggleLoss: 0.1 }, strengthText: 'Knows Central Asian caravan stories.', flawText: 'Poor Hindustani: haggle bonus halves east of Delhi.', line: 'Tursun knows the north road. Past Delhi he will be a guest like you.' },
-    { id: 'hakim_jafar', role: 'healer', name: 'Hakim Jafar', strength: { cureBonus: 0.05 }, flaw: { appetite: 1 }, strengthText: 'Cure chance +20 points.', flawText: 'Appetite: eats 1.3 rations.', line: 'Hakim Jafar cures fevers and empties larders.' },
-    { id: 'dai_sakina', role: 'healer', name: 'Dai Sakina', strength: { restMult: 1.1333 }, flaw: { frail: 1 }, strengthText: 'Rest recovery x1.7.', flawText: 'Frail: health capped at 80.', line: 'Sakina\'s hands mend the weak. The road may wear her down first.' },
+    { id: 'hakim_jafar', role: 'healer', name: 'Hakim Jafar', strength: { cureBonus: 0.05 }, flaw: { appetite: 1 }, strengthText: 'Cures fevers much more often.', flawText: 'Appetite: eats more than most.', line: 'Hakim Jafar cures fevers and empties larders.' },
+    { id: 'dai_sakina', role: 'healer', name: 'Dai Sakina', strength: { restMult: 1.1333 }, flaw: { frail: 1 }, strengthText: 'Rest mends the sick faster.', flawText: 'Frail: her health never runs high.', line: 'Sakina\'s hands mend the weak. The road may wear her down first.' },
     { id: 'vaidya_mohan', role: 'healer', name: 'Vaidya Mohan', strength: { thriftyTreatment: 1 }, flaw: { slow: 1 }, strengthText: 'Every second treatment uses no medicine.', flawText: 'Slow: speed -3%.', line: 'Mohan stretches medicine like a miser stretches coin, and walks like a monk.' },
-    { id: 'bibi_gulnar', role: 'cook', name: 'Bibi Gulnar', strength: { rationMult: 0.9444 }, flaw: { heavyPots: 1 }, strengthText: 'Ration use x0.85.', flawText: 'Heavy pots: +1 LU load.', line: 'Gulnar feeds five on four portions and carries a kitchen.' },
-    { id: 'karim', role: 'cook', name: 'Karim', strength: { kitchenMult: 0.6 }, flaw: { slow: 1 }, strengthText: 'Kitchen sickness x0.3.', flawText: 'Slow: speed -3%.', line: 'Karim has never poisoned a guest. He has also never hurried.' },
-    { id: 'hira', role: 'cook', name: 'Hira', strength: { provisionFoodMult: 1.3 }, flaw: { frail: 1 }, strengthText: 'Provisioning food +30%.', flawText: 'Frail: health capped at 80.', line: 'Hira finds supper where others see scrub.' },
-    { id: 'sher_dil', role: 'handler', name: 'Sher Dil', strength: { animalLossMult: 0.8333 }, flaw: { appetite: 1 }, strengthText: 'Animal loss x0.5.', flawText: 'Appetite: eats 1.3 rations.', line: 'Sher Dil nurses animals first and eats like three men.' },
+    { id: 'bibi_gulnar', role: 'cook', name: 'Bibi Gulnar', strength: { rationMult: 0.9444 }, flaw: { heavyPots: 1 }, strengthText: 'Stretches the rations.', flawText: 'Heavy pots: adds to the load.', line: 'Gulnar feeds five on four portions and carries a kitchen.' },
+    { id: 'karim', role: 'cook', name: 'Karim', strength: { kitchenMult: 0.6 }, flaw: { slow: 1 }, strengthText: 'Kitchen sickness is rare.', flawText: 'Slow: the caravan walks a little slower.', line: 'Karim has never poisoned a guest. He has also never hurried.' },
+    { id: 'hira', role: 'cook', name: 'Hira', strength: { provisionFoodMult: 1.3 }, flaw: { frail: 1 }, strengthText: 'Provisioning food +30%.', flawText: 'Frail: her health never runs high.', line: 'Hira finds supper where others see scrub.' },
+    { id: 'sher_dil', role: 'handler', name: 'Sher Dil', strength: { animalLossMult: 0.8333 }, flaw: { appetite: 1 }, strengthText: 'Fewer animals are lost.', flawText: 'Appetite: eats more than most.', line: 'Sher Dil nurses animals first and eats like three men.' },
     { id: 'nurbibi', role: 'handler', name: 'Nurbibi', strength: { camelCapMult: 1.1 }, flaw: { horseFeedMult: 1.1 }, strengthText: 'Camels carry +10%.', flawText: 'Horses need 10% more feed.', line: 'Nurbibi speaks to camels. Horses she does not trust.' },
-    { id: 'bahram', role: 'handler', name: 'Bahram', strength: { smallCapMult: 1.15 }, flaw: { camelLossMult: 1.2 }, strengthText: 'Mule, ox and donkey loads +15%.', flawText: 'Camel loss x1.2.', line: 'Bahram makes mules carry more than they think they can.' },
-    { id: 'munshi_kishan', role: 'accountant', name: 'Munshi Kishan', strength: { buyMult: 0.9783 }, flaw: { bribeLocked: 1 }, strengthText: 'Buy prices x0.9.', flawText: 'Refuses bribes: bribe options locked.', line: 'Kishan counts honestly. Never ask him to count crookedly.' },
-    { id: 'khwaja_sarhad', role: 'accountant', name: 'Khwaja Sarhad', strength: { saleBonus: 0.03 }, flaw: { theftMult: 1.2 }, strengthText: 'Cargo sales +3%.', flawText: 'Draws attention: theft x1.2.', line: 'Sarhad gets good prices and a good deal of attention.' },
-    { id: 'bibi_roshan', role: 'accountant', name: 'Bibi Roshan', strength: { buyMult: 0.9783 }, flaw: { slow: 1 }, strengthText: 'Buy prices x0.9.', flawText: 'Slow: speed -3%.', line: 'Roshan saves coin at every bazaar and loses a morning at each.' },
-    { id: 'gul_zaman', role: 'hunter', name: 'Gul Zaman', strength: { huntMult: 1 }, flaw: { appetite: 1 }, strengthText: 'Hunting yield x1.5.', flawText: 'Appetite: eats 1.3 rations.', line: 'Gul Zaman brings meat, and eats half before camp.' },
-    { id: 'amina', role: 'hunter', name: 'Amina', strength: { forageMult: 1.44 }, flaw: { frail: 1 }, strengthText: 'Forage yield x1.8.', flawText: 'Frail: health capped at 80.', line: 'Amina reads roots and leaves like a ledger.' },
-    { id: 'dilawar', role: 'hunter', name: 'Dilawar', strength: { fishMult: 1.44 }, flaw: { coldMult: 1.3 }, strengthText: 'Fish yield x1.8.', flawText: 'Feels the cold: exposure x1.3.', line: 'Dilawar can find fish in a puddle and catches colds in a breeze.' },
+    { id: 'bahram', role: 'handler', name: 'Bahram', strength: { smallCapMult: 1.15 }, flaw: { camelLossMult: 1.2 }, strengthText: 'Mules, oxen and donkeys carry more.', flawText: 'Camels are lost more often.', line: 'Bahram makes mules carry more than they think they can.' },
+    { id: 'munshi_kishan', role: 'accountant', name: 'Munshi Kishan', strength: { buyMult: 0.9783 }, flaw: { bribeLocked: 1 }, strengthText: 'Buys at better prices.', flawText: 'Refuses bribes: bribe options are closed.', line: 'Kishan counts honestly. Never ask him to count crookedly.' },
+    { id: 'khwaja_sarhad', role: 'accountant', name: 'Khwaja Sarhad', strength: { saleBonus: 0.03 }, flaw: { theftMult: 1.2 }, strengthText: 'Sells cargo for a little more.', flawText: 'Draws attention: thieves notice him.', line: 'Sarhad gets good prices and a good deal of attention.' },
+    { id: 'bibi_roshan', role: 'accountant', name: 'Bibi Roshan', strength: { buyMult: 0.9783 }, flaw: { slow: 1 }, strengthText: 'Buys at better prices.', flawText: 'Slow: the caravan walks a little slower.', line: 'Roshan saves coin at every bazaar and loses a morning at each.' },
+    { id: 'gul_zaman', role: 'hunter', name: 'Gul Zaman', strength: { huntMult: 1 }, flaw: { appetite: 1 }, strengthText: 'Hunts much better.', flawText: 'Appetite: eats more than most.', line: 'Gul Zaman brings meat, and eats half before camp.' },
+    { id: 'amina', role: 'hunter', name: 'Amina', strength: { forageMult: 1.44 }, flaw: { frail: 1 }, strengthText: 'Finds far more food when foraging.', flawText: 'Frail: her health never runs high.', line: 'Amina reads roots and leaves like a ledger.' },
+    { id: 'dilawar', role: 'hunter', name: 'Dilawar', strength: { fishMult: 1.44 }, flaw: { coldMult: 1.3 }, strengthText: 'Catches far more when fishing.', flawText: 'Feels the cold more than others.', line: 'Dilawar can find fish in a puddle and catches colds in a breeze.' },
   ]);
 
   /** Curated first-run offers (GDD 11.4); each offer is three candidate ids from three roles. */
@@ -382,9 +382,120 @@
     general: 'The road was long. Preparation, patience and local knowledge decided who arrived.',
   });
 
+
+  // ---------------------------------------------------------------------------
+  // Copy deck (v4 spec section 7). All new player-facing screen text lives here, so it can be edited without code.
+  // {curly} words are filled in by Content.copy(). Banned words are checked by tools/lint-content.mjs (v4 F10).
+  // ---------------------------------------------------------------------------
+  const COPY = Object.freeze({
+    'title.tagline': 'Kabul to Dhaka, 1665. One caravan, four months, a thousand ways to lose it.',
+    'title.continue': 'Continue: {chapterTitle}, day {day}',
+    'title.new': 'New journey',
+    'start.greeting': 'Choose who you are and who walks with you. The rest you will learn on the road.',
+    'start.partyPrompt': 'Pick three companions.',
+    'start.partyCount': '{count} of 3 chosen.',
+    'start.merchantPrompt': 'Who are you?',
+    'start.more': 'More choices (money, month, supplies, your reason)',
+    'start.begin': 'Begin the journey',
+    'start.beginNeedsThree': 'Pick three companions to begin',
+    'brief.title': 'Next: {stopName}',
+    'brief.line': '{kos} kos, about {days} days. {marketLine} {tollLine}',
+    'brief.noMarket': 'No market there.',
+    'brief.market': 'A market there.',
+    'brief.toll': 'A toll is likely.',
+    'brief.threat': 'Watch for: {threat}.',
+    'ready.title': 'Ready to go?',
+    'ready.food.ok': 'Food: {have} days, need about {need}.',
+    'ready.food.short': 'Food: {have} days, need about {need}. Buy {packs} packs.',
+    'ready.feed.ok': 'Feed: {have} days, need about {need}.',
+    'ready.feed.short': 'Feed: {have} days, need about {need}. Buy {packs} packs.',
+    'ready.money.ok': 'Money: tolls and ferries may cost about {cost} rupees. You have {have}.',
+    'ready.money.short': 'Money: tolls and ferries may cost about {cost} rupees. You have {have}.',
+    'ready.fix.food': 'Buy food',
+    'ready.fix.feed': 'Buy feed',
+    'ready.fix.money': 'Sell cargo',
+    'start.full': 'Three companions is the limit. Put one back first.',
+    'setout.ok': 'Set out for {stopName}',
+    'setout.risky': 'Set out anyway',
+    'load.blocked': 'Your animals can carry no more. Sell some cargo, or buy another animal.',
+    'load.sheet.title': 'Too heavy to move',
+    'load.sheet.body': 'Your animals are carrying too much. Leave something behind.',
+    'load.sheet.none': 'You have none to leave.',
+    'ledger.title': 'Evening, {date}',
+    'ledger.ate': 'The caravan ate {rations} rations; {days} days left.',
+    'ledger.quiet': 'A quiet day.',
+    'map.button': 'Map',
+    'chapter.label': 'Chapter {n}: {chapterTitle}',
+    'chapter.end.title': 'Chapter {n} complete: {chapterTitle}',
+    'chapter.end.summary': '{days} days. {alive} of {party} alive. Cargo in {condition} condition.',
+    'chapter.end.learned': 'What the road taught you',
+    'chapter.end.continue': 'Continue to Chapter {next}',
+    'chapter.end.rest': 'Rest here. Your journey is saved.',
+    'letter.seal': 'A letter waits for you. Tap the seal.',
+    'letter.reread': 'Read again',
+    'letters.empty': 'No letters yet. Daulat Beg sends the first from Kabul.',
+    'coach.understood': 'Understood',
+    'coach.title': 'Daulat Beg advises',
+    'coach.firstBuy': 'Food for people, feed for animals. Count the days to the next market, then add three.',
+    'coach.firstLoad': 'Your animals can only carry so much. Every lot of cargo is a sack of flour you cannot carry. Sell, or buy another animal, when the load is tight.',
+    'coach.firstSick': 'Medicine cures fever and often pechish. Rest heals the weak. Nothing heals the dead.',
+    'coach.firstNight': 'A sarai costs a little and keeps off cold and thieves. Crowds bring their own fevers.',
+    'coach.firstRiver': 'Ask the water before you ask the ferryman. High water drowns the brave.',
+    'coach.firstToll': 'The emperor forbade these tolls. The men with swords have not heard.',
+  });
+
+  /** Looks up a copy-deck line and fills {curly} words. Unknown keys return the key itself, which the lint catches. */
+  function copy(key, values) {
+    const template = COPY[key];
+    if (typeof template !== 'string') return key;
+    return template.replace(/\{(\w+)\}/g, (match, name) => (values && values[name] !== undefined ? String(values[name]) : match));
+  }
+
+
+  /**
+   * Alt text for every picture the game may show (v4 spec 8.2). The file names follow the ids: img/stops/stop_<id>.webp,
+   * img/portraits/por_<candidateId>_<mood>.webp, img/events/ev_<id>.webp, img/ui/<id>.webp.
+   * A picture with no alt text here is a lint error, so a new image cannot ship without its description.
+   */
+  const STOP_ALT_SPECIFIC = {
+    kabul: 'The Bala Hisar fort above the Kabul bazaar, camels kneeling in the foreground.',
+    jalalabad: 'Orange orchards and a smoky sarai courtyard at Jalalabad.',
+    khyber: 'The narrow Khyber Pass, armed men on the ridge and a small caravan below.',
+    peshawar: 'A crowded caravanserai courtyard at night in Peshawar, lamps and bales of cargo.',
+    attock: 'The fort at Attock above the brown Indus, with ferry boats on the water.',
+  };
+  const COMPANION_ALT = {
+    naseer: 'Naseer, a thin, nervous interpreter in a scholar’s cap',
+    hakim_jafar: 'Hakim Jafar, an older healer with a satchel of herbs',
+    bibi_gulnar: 'Bibi Gulnar, a strong middle-aged cook with a copper pot',
+    sher_dil: 'Sher Dil, a weathered animal handler with a camel rope',
+    munshi_kishan: 'Munshi Kishan, an accountant with a ledger and reed pen',
+    gul_zaman: 'Gul Zaman, a young hill hunter with a bow',
+  };
+  const IMAGE_ALT = (() => {
+    const alt = {
+      title_hero: 'A caravan at dawn leaving Kabul under snowy peaks.',
+      letter_paper: 'A folded sheet of letter paper.',
+      seal_red: 'A red wax seal.',
+      ev_lame_camel: 'A camel limping on ice in a snowy gorge, the handler kneeling beside her.',
+      ev_toll: 'A toll post in a pass, an officer with a ledger.',
+      ev_ferry: 'A loaded ferry in fast water.',
+      ev_sarai_night: 'A sarai courtyard at night, travellers around a fire.',
+      ev_ambush: 'Riders in a ravine, the caravan scattering.',
+      ev_grave: 'A small roadside grave with a stone, the caravan passing.',
+    };
+    namespace.World.NODES.forEach((node) => { alt[`stop_${node.id}`] = STOP_ALT_SPECIFIC[node.id] || `${node.name}, as the caravan finds it.`; });
+    const moodWords = { content: 'at ease', worried: 'worried', grieving: 'grieving' };
+    Object.keys(COMPANION_ALT).forEach((candidateId) => {
+      Object.keys(moodWords).forEach((mood) => { alt[`por_${candidateId}_${mood}`] = `${COMPANION_ALT[candidateId]}, ${moodWords[mood]}.`; });
+    });
+    return Object.freeze(alt);
+  })();
+
   namespace.Content = Object.freeze({
+    IMAGE_ALT,
     CANDIDATES, FIRST_RUN_OFFERS, DAULAT_BEG, SUBPLOTS, VIGNETTES, REGION_FLAVOUR,
     STORYLETS: Object.freeze([...ROAD_STORYLETS, ...SET_PIECES, ...DILEMMAS, ...SUBPLOT_BEATS]),
-    CODEX, LESSONS,
+    CODEX, LESSONS, COPY, copy,
   });
 })(window.Karvanyan);

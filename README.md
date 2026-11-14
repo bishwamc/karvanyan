@@ -6,11 +6,15 @@ Plain HTML, CSS and JavaScript. **No build step, no dependencies, no external as
 
 ## How to play
 
-1. **Opening.** Daulat Beg walks you through 12 short beats: choose a merchant (Persian, Armenian, Pashtun, Uzbek, Yarkandi), split capital between **cargo** and **purse**, pick three recruits from six roles (interpreter, healer, cook, animal handler, accountant, hunter/gatherer), buy animals and supplies, choose the month, pace, rations, a first-leg scout and your private reason (it picks one of four subplots). Skippable; "Quick start" repeats your last party.
+1. **Start (v4).** One screen: Daulat Beg asks who you are (five merchants) and who walks with you (three of six companions, preselected so a first run takes about four taps from the title). "More choices" holds money split, start month, supply packs and your private reason. "Quick start" repeats your last party.
 2. **At a stop** (tabs): **Town** (sell cargo in lots, buy rations, feeds, medicine, covers, animals), **Caravan** (health, Treat buttons, pace, rations, hire scouts, guards and a guide), **Learn** (region briefing, forecast, rumours, "ask around", codex). The action bar shows rations, feeds and days to the next stop.
 3. **On the road** one day passes at a time. Weather is forecast ahead; a vignette may hint at what is coming. You choose sarai or camp at night (or set a default in Settings).
 4. **Rest days** let the weak and sick recover and offer the **provisioning minigame** (hunt, fish or forage, picked by region; about 20 s; cannot be skipped once started, but you may just rest).
 5. Rivers, tolls, dilemmas and subplot beats appear as choices with their costs shown. Reaching Dhaka alive and selling your cargo there ends the game.
+
+## Images (v4.1)
+
+The game ships with its canvas pictures. Drop finished `.webp` files into `img/` using the names in `img/README.md` and they replace the canvas pictures one by one. A missing file falls back silently.
 
 ## Not finished 
 

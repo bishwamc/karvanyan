@@ -22,6 +22,8 @@
   const State = namespace.State;
   const Engine = namespace.Engine;
   const Events = namespace.Events;
+  const Story = namespace.Story;
+  const copy = (key, values) => Content.copy(key, values);
 
   const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
   const SAVED_INDICATOR_MILLISECONDS = 1500;
@@ -185,7 +187,10 @@
     if (preservedCanvas) preservedCanvas.remove();
 
     context.screenElement.replaceChildren(...children);
+    const isNewScreen = context.screenElement.dataset.screen !== screenName;
     context.screenElement.dataset.screen = screenName;
+    // A different screen starts at the top; a redraw of the same screen (a purchase, a tab) keeps the reader's place.
+    if (isNewScreen && typeof window.scrollTo === 'function') window.scrollTo(0, 0);
 
     if (!hadFocusInScreen || !previousFocusKey || modalStack.length > 0) return;
     const candidates = context.screenElement.querySelectorAll('[data-focus-key]');
@@ -311,6 +316,7 @@
     reportSheet.notice = null;
     while (sheetHandles.length > 0) sheetHandles.pop().close();
     if (encounterModal) { encounterModal.close(); encounterModal = null; }
+    if (chapterModal) { chapterModal.close(); chapterModal = null; }
   }
 
   function hasOpenModal() {
@@ -339,6 +345,8 @@
         body.appendChild(createButton({ label: 'Continue', action: 'encounterContinue', testId: 'modal-continue', variant: 'primary' }));
         return;
       }
+      if (view.imageId) body.appendChild(showSceneImage(view.imageId, null, getImageAlt(view.imageId)));
+      if (options && options.marginNoteId) body.appendChild(createElement('p', { className: 'coach-line', dataset: { testid: `note-${options.marginNoteId}` }, text: `Daulat Beg: "${copy(`coach.${options.marginNoteId}`)}"` }));
       createParagraphs(view.paragraphs).forEach((paragraph) => body.appendChild(paragraph));
       if (view.kind === 'provision') {
         const data = state.pending.data;
@@ -667,7 +675,10 @@
     return travelCanvasElement;
   }
 
-  const renderRoadFrame = (state, timeSeconds, isStill) => withContext(travelCanvasElement, (ctx) => paintRoadScene(ctx, state, timeSeconds, isStill));
+  const renderRoadFrame = (state, timeSeconds, isStill) => {
+    withContext(travelCanvasElement, (ctx) => paintRoadScene(ctx, state, timeSeconds, isStill));
+    renderRouteStrip(state, timeSeconds, isStill);
+  };
 
   // ---------------------------------------------------------------------------
   // Shared screen parts
@@ -816,20 +827,19 @@
   /** @param {{saveSummary:string|null, saveProblem:string|null, graves:Array, topScores:Array, isStorageSupported:boolean, hasLastSetup:boolean}} view */
   function showTitle(view) {
     closeAllModals();
-    const banner = createSceneCanvas('title-canvas', 'Illustration of Kabul at dusk');
-    withContext(banner, (ctx) => paintStopScene(ctx, 'kabul'));
+    const banner = showSceneImage('title_hero', (ctx) => paintStopScene(ctx, 'kabul'), 'Illustration of Kabul at dusk');
     const children = [
       createElement('header', { className: 'title-block' }, [
         createElement('h1', { className: 'title-block__name', text: 'Kārvānyān of Sadak\u2011e\u2011Azam' }),
         createElement('p', { className: 'title-block__subtitle', text: 'The Long Road East' }),
-        createElement('p', { className: 'title-block__tagline', text: 'Lead a merchant caravan from Kabul to Dhaka, 1665.' }),
+        createElement('p', { className: 'title-block__tagline', text: copy('title.tagline') }),
       ]), banner,
     ];
     if (!view.isStorageSupported) children.push(createElement('p', { className: 'banner banner--warning', role: 'status', dataset: { testid: 'save-banner' }, text: 'Saving is not available in this browser mode. Your run will be lost if you close the tab.' }));
     if (view.saveProblem) children.push(createElement('p', { className: 'banner banner--danger', role: 'alert', text: view.saveProblem }));
     const menu = createElement('nav', { className: 'menu', 'aria-label': 'Main menu' });
     if (view.saveSummary) { menu.appendChild(createButton({ label: 'Continue', action: 'continueGame', testId: 'title-continue', variant: 'primary', className: 'menu__continue' })); menu.appendChild(createElement('p', { className: 'menu__summary', text: view.saveSummary })); }
-    menu.appendChild(createButton({ label: 'New journey', action: 'newJourney', testId: 'title-new', variant: view.saveSummary ? 'secondary' : 'primary' }));
+    menu.appendChild(createButton({ label: copy('title.new'), action: 'newJourney', testId: 'title-new', variant: view.saveSummary ? 'secondary' : 'primary' }));
     if (view.hasLastSetup) menu.appendChild(createButton({ label: 'Quick start (repeat last party)', action: 'quickStart', testId: 'title-quick' }));
     menu.appendChild(createElement('div', { className: 'button-row' }, [createButton({ label: 'Codex', action: 'openCodex', testId: 'btn-codex', variant: 'quiet' }), createButton({ label: 'Settings', action: 'openSettings', testId: 'btn-settings', variant: 'quiet' })]));
     children.push(menu);
@@ -840,88 +850,304 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Opening (GDD 9.2): Daulat Beg walks the player through setup, one choice per beat
+  // One-screen start (v4 N1): merchant, three companions, begin. Everything else sits behind "More choices".
   // ---------------------------------------------------------------------------
 
   /**
-   * @param {{step:number, steps:number, speech:string, draft:Object, preview:Object, offer:Object[], canQuickStart:boolean}} view
+   * @param {{draft:Object, offers:Array<{role:string, candidate:Object}>, gapLine:string|null, isMoreOpen:boolean, canQuickStart:boolean}} view
    */
-  function showOpening(view) {
+  function showStart(view) {
     closeAllModals();
-    const { step, draft, preview } = view;
+    const { draft } = view;
     const archetype = State.findArchetype(draft.archetypeId);
-    const body = [];
-    const nextButton = (labelText, action) => createButton({ label: labelText || 'Next', action: action || 'openingNext', testId: 'opening-next', variant: 'primary' });
+    const chosenCount = draft.candidateIds.length;
 
-    if (step === 0) {
-      body.push(createPanel('Who are you?', [createElement('div', { className: 'button-column' }, Config.ARCHETYPES.map((item) => createButton({ label: `${item.label} · ${item.difficultyLabel}`, action: 'openingArchetype', argument: item.id, testId: `merchant-${item.id}`, variant: item.id === draft.archetypeId ? 'primary' : 'secondary', isPressed: item.id === draft.archetypeId })))]));
-      body.push(createPanel(archetype.label, [
-        createElement('p', { className: 'paragraph', text: Content.DAULAT_BEG.reasons[archetype.id] }),
-        createElement('p', { className: 'paragraph', text: `Home: ${archetype.homeText} Strength: ${archetype.expertText} Weakness: ${archetype.weaknessText}` }),
-        createElement('p', { className: 'paragraph', text: `Cargo: ${Config.CARGO[archetype.cargoId].label}. Capital: ${archetype.capital} rupees. Animals: ${Object.keys(archetype.animals).map((type) => `${archetype.animals[type]} ${type}`).join(', ')}.` }),
+    const merchantCards = Config.ARCHETYPES.map((item) => createElement('button', {
+      type: 'button', className: `pick-card ${item.id === draft.archetypeId ? 'pick-card--selected' : ''}`.trim(), 'aria-pressed': String(item.id === draft.archetypeId),
+      dataset: { action: 'startMerchant', argument: item.id, testid: `merchant-${item.id}`, focusKey: `merchant-${item.id}` },
+    }, [
+      createElement('span', { className: 'pick-card__name', text: item.label.replace(' merchant', '').replace(' trader', '') }),
+      createElement('span', { className: 'pick-card__tag', text: item.difficultyLabel }),
+      createElement('span', { className: 'pick-card__text', text: item.expertText }),
+    ]));
+
+    const partyCards = view.offers.map(({ role, candidate }) => {
+      const isChosen = draft.candidateIds.includes(candidate.id);
+      return createElement('button', {
+        type: 'button', className: `pick-card ${isChosen ? 'pick-card--selected' : ''}`.trim(), 'aria-pressed': String(isChosen),
+        dataset: { action: 'startToggleCandidate', argument: candidate.id, testid: `candidate-${candidate.id}`, focusKey: `candidate-${candidate.id}` },
+      }, [
+        createElement('span', { className: 'pick-card__name', text: candidate.name }),
+        createElement('span', { className: 'pick-card__tag', text: Config.ROLES[role].label }),
+        createElement('span', { className: 'pick-card__text', text: `${candidate.strengthText} ${candidate.flawText}` }),
+      ]);
+    });
+
+    const moreChildren = [];
+    if (view.isMoreOpen) {
+      moreChildren.push(createElement('label', { className: 'field' }, [createElement('span', { className: 'field__label', text: 'Name the leader' }), createElement('input', { className: 'field__input', type: 'text', id: 'start-name', maxlength: String(Config.LIMITS.MAX_NAME_LENGTH), value: draft.leaderName || archetype.names[0], autocomplete: 'off', dataset: { testid: 'start-name' } })]));
+      moreChildren.push(createElement('p', { className: 'paragraph', text: `Share of money put into ${Config.CARGO[archetype.cargoId].label.toLowerCase()}: ${Math.round(draft.cargoShare * 100)}%. The rest stays in your purse.` }));
+      moreChildren.push(createElement('div', { className: 'button-row' }, Config.CARGO_PRESETS.map((preset) => createButton({ label: `${preset.label} (${Math.round(preset.share * 100)}%)`, action: 'startShare', argument: preset.share, testId: `preset-${preset.id}`, variant: Math.abs(draft.cargoShare - preset.share) < 0.01 ? 'primary' : 'secondary', isPressed: Math.abs(draft.cargoShare - preset.share) < 0.01 }))));
+      moreChildren.push(createElement('div', { className: 'choice-list' }, Config.CALENDAR.START_OPTIONS.map((option) => createElement('div', { className: 'choice' }, [createButton({ label: option.label, action: 'startMonth', argument: option.monthIndex, testId: `setup-month-${option.monthIndex}`, variant: draft.startMonthIndex === option.monthIndex ? 'primary' : 'secondary', isPressed: draft.startMonthIndex === option.monthIndex, className: 'choice__button' }), createElement('span', { className: 'choice__hint', text: option.consequence })]))));
+      moreChildren.push(createElement('div', { className: 'button-row' }, [
+        createButton({ label: `Rations: ${draft.rationPacks} packs −`, action: 'startPacks', argument: 'rations:-1', isDisabled: draft.rationPacks <= 0 }), createButton({ label: 'Rations +', action: 'startPacks', argument: 'rations:1', testId: 'start-rations-plus' }),
       ]));
-      body.push(createElement('label', { className: 'field' }, [createElement('span', { className: 'field__label', text: 'Name the leader' }), createElement('input', { className: 'field__input', type: 'text', id: 'opening-name', maxlength: String(Config.LIMITS.MAX_NAME_LENGTH), value: draft.leaderName || archetype.names[0], autocomplete: 'off', dataset: { testid: 'opening-name', enterAction: 'openingNext' } })]));
-      body.push(nextButton());
-    } else if (step === 1) {
-      const cargo = preview.cargo;
-      body.push(createElement('div', { className: 'button-row' }, Config.CARGO_PRESETS.map((preset) => createButton({ label: `${preset.label} (${Math.round(preset.share * 100)}%)`, action: 'openingShare', argument: preset.share, testId: `preset-${preset.id}`, variant: Math.abs(draft.cargoShare - preset.share) < 0.01 ? 'primary' : 'secondary' }))));
-      body.push(createElement('label', { className: 'field' }, [createElement('span', { className: 'field__label', text: `Share of capital in cargo: ${Math.round(draft.cargoShare * 100)}%` }), createElement('input', { type: 'range', min: '10', max: '90', step: '5', value: String(Math.round(draft.cargoShare * 100)), id: 'opening-share', className: 'field__range', dataset: { changeAction: 'openingShareRange', testid: 'opening-share' } })]));
-      body.push(createPanel('Result', [createElement('p', { className: 'paragraph', text: `${cargo.units} ${Config.CARGO[cargo.id].label.toLowerCase()} (${State.roundToTenth(cargo.units * Config.CARGO[cargo.id].lu)} load units) and ${Math.round(preview.money)} rupees in the purse. Cargo is capped by free capacity; unspent cargo money returns to the purse.` })]));
-      body.push(nextButton());
-    } else if (step >= 2 && step <= 4) {
-      body.push(createElement('div', { className: 'choice-list' }, view.offer.map((candidate) => createElement('div', { className: 'choice' }, [
-        createButton({ label: `${candidate.name} · ${Config.ROLES[candidate.role].label}`, action: 'openingCandidate', argument: candidate.id, testId: `candidate-${candidate.id}`, variant: 'primary', className: 'choice__button' }),
-        createElement('span', { className: 'choice__hint', text: `+ ${candidate.strengthText} − ${candidate.flawText} "${candidate.line}"` }),
-      ]))));
-      body.push(createElement('p', { className: 'footnote', text: `Picked so far: ${draft.candidateIds.map((id) => State.findCandidate(id).name).join(', ') || 'nobody'}. Gaps are permanent.` }));
-    } else if (step === 5) {
-      body.push(createPanel('Your animals', [createElement('p', { className: 'paragraph', text: `${preview.animals.map((animal) => Config.ANIMALS[animal.type].label).join(', ')}. Capacity ${State.getCapacity(preview)} load units. Purse ${Math.round(preview.money)} rupees.` }),
-        createElement('div', { className: 'button-column' }, ['donkey', 'ox', 'mule', 'camel', 'horse'].map((type) => createButton({ label: `Buy a ${type} · ${Config.ANIMALS[type].price} rupees · carries ${Config.ANIMALS[type].capacity}`, action: 'openingAnimal', argument: type, testId: `buy-${type}`, isDisabled: preview.money < Config.ANIMALS[type].price }))),
-        createButton({ label: 'Undo last animal', action: 'openingAnimalUndo', variant: 'quiet', isDisabled: draft.extraAnimals.length === 0 })]));
-      body.push(nextButton());
-    } else if (step === 6) {
-      const edge = World.getOutgoingEdges('kabul')[0];
-      const forecast = Engine.computeSupplyForecast(preview, edge);
-      body.push(createPanel('Your larder', [
-        createElement('p', { className: `forecast ${forecast.rationDays < forecast.legDays ? 'forecast--warning' : ''}`.trim(), dataset: { testid: 'forecast' }, text: `Rations ${forecast.rationDays} d · Feeds ${forecast.feedDays} d · Jalalabad ≈ ${forecast.legDays} d` }),
-        createMeter('Load', State.getLoad(preview), State.getCapacity(preview) || 1, ''),
-        createElement('p', { className: 'paragraph', text: `Load ${State.getLoad(preview)} of ${State.getCapacity(preview)}. Purse ${Math.round(preview.money)} rupees.` }),
-        createElement('div', { className: 'button-row' }, [createButton({ label: `Rations: ${draft.rationPacks} packs −`, action: 'openingPacks', argument: 'rations:-1', isDisabled: draft.rationPacks <= 0 }), createButton({ label: 'Rations +', action: 'openingPacks', argument: 'rations:1', testId: 'opening-rations-plus' })]),
-        createElement('div', { className: 'button-row' }, [createButton({ label: `Feeds: ${draft.feedPacks} packs −`, action: 'openingPacks', argument: 'feeds:-1', isDisabled: draft.feedPacks <= 0 }), createButton({ label: 'Feeds +', action: 'openingPacks', argument: 'feeds:1', testId: 'opening-feeds-plus' })]),
+      moreChildren.push(createElement('div', { className: 'button-row' }, [
+        createButton({ label: `Feed: ${draft.feedPacks} packs −`, action: 'startPacks', argument: 'feeds:-1', isDisabled: draft.feedPacks <= 0 }), createButton({ label: 'Feed +', action: 'startPacks', argument: 'feeds:1', testId: 'start-feeds-plus' }),
       ]));
-      body.push(nextButton());
-    } else if (step === 7) {
-      body.push(createElement('div', { className: 'choice-list' }, Config.CALENDAR.START_OPTIONS.map((option) => createElement('div', { className: 'choice' }, [createButton({ label: option.label, action: 'openingMonth', argument: option.monthIndex, testId: `setup-month-${option.monthIndex}`, variant: draft.startMonthIndex === option.monthIndex ? 'primary' : 'secondary', isPressed: draft.startMonthIndex === option.monthIndex, className: 'choice__button' }), createElement('span', { className: 'choice__hint', text: option.consequence })]))));
-      body.push(nextButton());
-    } else if (step === 8) {
-      body.push(createPanel('Pace and rations', [createStepper('Pace', Config.PACES, draft.pace, 'openingPace', 'pace'), createStepper('Rations', Config.RATIONS, draft.rationLevel, 'openingRations', 'ration')]));
-      body.push(nextButton());
-    } else if (step === 9) {
-      body.push(createElement('div', { className: 'button-column' }, [createButton({ label: 'Accept the scout (patron pays)', action: 'openingScout', argument: 'yes', testId: 'opening-scout-yes', variant: draft.scout ? 'primary' : 'secondary' }), createButton({ label: 'Decline', action: 'openingScout', argument: 'no', testId: 'opening-scout-no', variant: draft.scout ? 'secondary' : 'primary' })]));
-      body.push(nextButton());
-    } else if (step === 10) {
-      body.push(createElement('div', { className: 'button-column' }, Content.DAULAT_BEG.privateReasons.map((reason) => createButton({ label: reason.label, action: 'openingReason', argument: reason.id, testId: `reason-${reason.id}`, variant: draft.subplotId === reason.id ? 'primary' : 'secondary', isPressed: draft.subplotId === reason.id }))));
-      body.push(nextButton());
-    } else {
-      body.push(createPanel('Ready', [createElement('p', { className: 'paragraph', text: `${draft.leaderName} sets out from Kabul with ${preview.cargo.units} lots of ${Config.CARGO[preview.cargo.id].label.toLowerCase()}, ${preview.animals.length} animals and ${Math.round(preview.money)} rupees.` })]));
-      body.push(createButton({ label: 'Set out', action: 'openingFinish', testId: 'setup-begin', variant: 'primary' }));
+      moreChildren.push(createElement('p', { className: 'paragraph', text: 'Your private reason for the journey:' }));
+      moreChildren.push(createElement('div', { className: 'button-column' }, Content.DAULAT_BEG.privateReasons.map((reason) => createButton({ label: reason.label, action: 'startReason', argument: reason.id, testId: `reason-${reason.id}`, variant: draft.subplotId === reason.id ? 'primary' : 'secondary', isPressed: draft.subplotId === reason.id }))));
     }
 
-    const nav = createElement('div', { className: 'button-row' }, [
-      step > 0 ? createButton({ label: 'Back', action: 'openingBack', variant: 'quiet', testId: 'opening-back' }) : createButton({ label: 'Title', action: 'goToTitle', variant: 'quiet' }),
-      createButton({ label: view.canQuickStart ? 'Skip: repeat last party' : 'Skip: use defaults', action: 'openingSkip', variant: 'quiet', testId: 'opening-skip' }),
-    ]);
     replaceScreen([
-      createElement('h1', { className: 'screen-title', text: `Daulat Beg · ${step + 1} of ${view.steps}` }),
-      createElement('blockquote', { className: 'speech', dataset: { testid: 'opening-speech' }, text: `"${view.speech}"` }),
-      ...body, nav,
-    ], 'opening');
+      createElement('h1', { className: 'screen-title', text: 'Daulat Beg' }),
+      createElement('blockquote', { className: 'speech', dataset: { testid: 'start-speech' }, text: `"${copy('start.greeting')}"` }),
+      createElement('h2', { className: 'section-title', text: copy('start.merchantPrompt') }),
+      createElement('div', { className: 'pick-row', role: 'group', 'aria-label': 'Merchant' }, merchantCards),
+      createElement('p', { className: 'paragraph', text: Content.DAULAT_BEG.reasons[archetype.id] }),
+      createElement('h2', { className: 'section-title', text: copy('start.partyPrompt') }),
+      createElement('p', { className: 'footnote', dataset: { testid: 'start-count' }, text: copy('start.partyCount', { count: chosenCount }) }),
+      createElement('div', { className: 'pick-grid', role: 'group', 'aria-label': 'Companions' }, partyCards),
+      createElement('p', { className: `paragraph start-gap ${view.gapLine ? 'start-gap--shown' : ''}`.trim(), role: 'status', dataset: { testid: 'start-gap' }, text: view.gapLine || '' }),
+      createButton({ label: copy('start.more'), action: 'startToggleMore', testId: 'start-more', variant: 'quiet', isPressed: view.isMoreOpen }),
+      ...moreChildren,
+      createButton({ label: chosenCount === 3 ? copy('start.begin') : copy('start.beginNeedsThree'), action: 'startBegin', testId: 'setup-begin', variant: 'primary', isDisabled: chosenCount !== 3 }),
+      createElement('div', { className: 'button-row' }, [
+        createButton({ label: 'Title', action: 'goToTitle', variant: 'quiet' }),
+        view.canQuickStart ? createButton({ label: 'Quick start (repeat last party)', action: 'quickStart', variant: 'quiet', testId: 'start-quick' }) : null,
+      ].filter(Boolean)),
+    ], 'start');
   }
 
-  /** @returns {string} the leader name typed in beat 0, or '' */
-  function readOpeningName() {
-    const input = document.getElementById('opening-name');
+  /** @returns {string} the leader name typed under "More choices", or '' */
+  function readStartName() {
+    const input = document.getElementById('start-name');
     return input ? input.value : '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pictures from the img/ folder, with the canvas drawing as the fallback (v4 spec 8 and 9.6)
+  // ---------------------------------------------------------------------------
+
+  const IMAGE_FOLDER_BY_PREFIX = Object.freeze({ stop: 'stops', por: 'portraits', ev: 'events' });
+
+  /** @returns {string} where a picture lives: stop_kabul is img/stops/stop_kabul.webp, title_hero is img/ui/title_hero.webp */
+  function getImageUrl(imageId) {
+    const prefix = String(imageId).split('_')[0];
+    return `./img/${IMAGE_FOLDER_BY_PREFIX[prefix] || 'ui'}/${imageId}.webp`;
+  }
+
+  /** Alt text for a picture, or '' (decoration) when the id has none. The text lives in content.js. */
+  const getImageAlt = (imageId) => (Content.IMAGE_ALT && Content.IMAGE_ALT[imageId]) || '';
+
+  /**
+   * A scene picture. The canvas drawing is shown at once; if img/<folder>/<imageId>.webp exists it replaces the
+   * drawing when it has loaded. A missing file leaves the drawing and raises no error.
+   * @param {string} imageId
+   * @param {(ctx:CanvasRenderingContext2D)=>void} fallbackPainter
+   * @param {string} description alt text for the drawing
+   * @returns {HTMLElement}
+   */
+  function showSceneImage(imageId, fallbackPainter, description) {
+    const wrapper = createElement('div', { className: 'scene-image', dataset: { imageId, testid: `scene-${imageId}` } });
+    if (fallbackPainter) {
+      const canvas = createSceneCanvas(`scene-canvas-${imageId}`, description);
+      withContext(canvas, fallbackPainter);
+      wrapper.appendChild(canvas);
+    }
+    if (typeof Image !== 'function') return wrapper;
+    const picture = new Image();
+    picture.decoding = 'async';
+    picture.width = 960;
+    picture.height = 540;
+    picture.alt = getImageAlt(imageId) || description;
+    picture.className = 'scene-canvas scene-image__picture';
+    picture.onload = () => { wrapper.dataset.imageLoaded = 'true'; wrapper.replaceChildren(picture); };
+    picture.onerror = () => { wrapper.dataset.imageLoaded = 'false'; };
+    picture.src = getImageUrl(imageId);
+    return wrapper;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Route strip (v4 N5): the chapter as dots and kos ticks, with the caravan walking along it. Tap it for the map.
+  // ---------------------------------------------------------------------------
+
+  const STRIP_WIDTH = 320;
+  const STRIP_HEIGHT = 30;
+  let stripCanvasElement = null;
+
+  /** Where the strip draws: this chapter's stops by kos, and where the caravan is along them. */
+  function getStripLayout(state) {
+    const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
+    const chapterNumber = edge ? Story.getChapterNumberForNode(edge.to) : Story.CHAPTERS.length;
+    const chapter = Story.getChapter(chapterNumber);
+    const startNodeId = chapterNumber === 1 ? World.FIRST_NODE_ID : Story.getChapter(chapterNumber - 1).endNodeId;
+    const startKos = World.getKosBefore(startNodeId);
+    const endKos = World.getKosBefore(chapter.endNodeId);
+    const firstIndex = World.getNodeIndex(startNodeId);
+    const lastIndex = World.getNodeIndex(chapter.endNodeId);
+    const stops = World.NODES.slice(firstIndex, lastIndex + 1).map((node) => ({ id: node.id, name: node.name, kos: World.getKosBefore(node.id) }));
+    const originId = state.phase === 'road' && edge ? edge.from : state.nodeId;
+    const caravanKos = Math.min(endKos, Math.max(startKos, World.getKosBefore(originId) + (state.phase === 'road' ? state.kosOnEdge : 0)));
+    return { chapter, startKos, endKos, stops, caravanKos };
+  }
+
+  function paintRouteStrip(canvas, layout, timeSeconds, isStill) {
+    const ctx = canvas.getContext ? canvas.getContext('2d') : null;
+    if (!ctx) return;
+    const scale = canvas.width / STRIP_WIDTH;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.clearRect(0, 0, STRIP_WIDTH, STRIP_HEIGHT);
+    const left = 14;
+    const right = STRIP_WIDTH - 14;
+    const span = Math.max(1, layout.endKos - layout.startKos);
+    const xOf = (kos) => left + ((kos - layout.startKos) / span) * (right - left);
+    const lineY = 22;
+    fillRectangle(ctx, PALETTE.stoneDark, left, lineY, right - left, 1.5);
+    fillRectangle(ctx, PALETTE.rule || PALETTE.cinnabar, left, lineY, Math.max(0, xOf(layout.caravanKos) - left), 1.5);
+    for (let kos = Math.ceil(layout.startKos / 5) * 5; kos <= layout.endKos; kos += 5) fillRectangle(ctx, PALETTE.stoneDark, xOf(kos), lineY - 2, 1, 2);
+    layout.stops.forEach((stop, index) => {
+      const x = xOf(stop.kos);
+      const isPassed = stop.kos <= layout.caravanKos + 0.01;
+      const isLast = index === layout.stops.length - 1;
+      drawDisc(ctx, isPassed ? PALETTE.cinnabar : PALETTE.person, x, lineY + 0.75, isLast ? 4.2 : 3.2);
+    });
+    const frame = isStill ? 0 : Math.floor(timeSeconds * 4) % 2;
+    const caravanX = xOf(layout.caravanKos);
+    ctx.save();
+    ctx.translate(Math.min(right - 30, Math.max(left - 4, caravanX - 14)), 3);
+    ctx.scale(0.5, 0.5);
+    paintAnimal(ctx, 0, 0, frame, 'camel');
+    paintAnimal(ctx, -26, 2, frame ? 0 : 1, 'mule');
+    paintTraveller(ctx, 28, 8, frame, false);
+    ctx.restore();
+  }
+
+  function createRouteStrip(state) {
+    const layout = getStripLayout(state);
+    const scale = Config.CANVAS.RENDER_SCALE || 1;
+    const canvas = createElement('canvas', { className: 'route-strip__canvas', width: STRIP_WIDTH * scale, height: STRIP_HEIGHT * scale, 'aria-hidden': 'true' });
+    stripCanvasElement = canvas;
+    paintRouteStrip(canvas, layout, 0, true);
+    const kosText = `${Math.round(layout.caravanKos - layout.startKos)} of ${layout.endKos - layout.startKos} kos`;
+    return createElement('button', {
+      type: 'button', className: 'route-strip', 'aria-label': `${copy('chapter.label', { n: layout.chapter.number, chapterTitle: layout.chapter.title })}. ${kosText}. Open the map.`,
+      dataset: { action: 'openMap', testid: 'route-strip', focusKey: 'route-strip' },
+    }, [
+      createElement('span', { className: 'route-strip__row' }, [
+        createElement('span', { className: 'route-strip__title', text: copy('chapter.label', { n: layout.chapter.number, chapterTitle: layout.chapter.title }) }),
+        createElement('span', { className: 'route-strip__map', text: `${copy('map.button')} ▸` }),
+      ]),
+      canvas,
+    ]);
+  }
+
+  /** Redraws the strip on the road screen each frame, so the caravan walks. */
+  function renderRouteStrip(state, timeSeconds, isStill) {
+    if (!stripCanvasElement || !stripCanvasElement.isConnected) return;
+    paintRouteStrip(stripCanvasElement, getStripLayout(state), timeSeconds, isStill);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Leg brief and readiness check (v4 N6)
+  // ---------------------------------------------------------------------------
+
+  function createLegBrief(state) {
+    const brief = Engine.getLegBrief(state);
+    const readiness = Engine.getLegReadiness(state);
+    if (!brief || !readiness) return null;
+    const dayWord = (count) => (count === 1 ? 'day' : 'days');
+    const line = copy('brief.line', { kos: brief.kos, days: brief.days, marketLine: brief.hasMarket ? copy('brief.market') : copy('brief.noMarket'), tollLine: brief.isTollLikely ? copy('brief.toll') : '' }).replace(/\s+/g, ' ').trim();
+    const rows = [
+      { id: 'food', isOk: readiness.food.isOk, text: copy(readiness.food.isOk ? 'ready.food.ok' : 'ready.food.short', { have: readiness.food.haveDays, need: readiness.food.needDays, packs: readiness.food.packsToBuy }), fixLabel: copy('ready.fix.food') },
+      { id: 'feed', isOk: readiness.feed.isOk, text: copy(readiness.feed.isOk ? 'ready.feed.ok' : 'ready.feed.short', { have: readiness.feed.haveDays, need: readiness.feed.needDays, packs: readiness.feed.packsToBuy }), fixLabel: copy('ready.fix.feed') },
+      { id: 'money', isOk: readiness.money.isOk, text: copy(readiness.money.isOk ? 'ready.money.ok' : 'ready.money.short', { cost: readiness.money.costRupees, have: Math.floor(readiness.money.haveRupees) }), fixLabel: copy('ready.fix.money') },
+    ];
+    const canTrade = State.getNode(state).tier !== 'none';
+    return createElement('section', { className: 'leg-brief', 'aria-label': 'The road ahead', dataset: { testid: 'leg-brief' } }, [
+      createElement('h2', { className: 'leg-brief__title', text: copy('brief.title', { stopName: brief.stopName }) }),
+      createElement('p', { className: 'paragraph', text: line }),
+      createElement('p', { className: 'paragraph', text: copy('brief.threat', { threat: brief.threatWord }) }),
+      createElement('p', { className: 'footnote', text: `Daulat Beg: "${brief.tip}"` }),
+      createElement('ul', { className: 'readiness', dataset: { testid: 'readiness' } }, rows.map((row) => createElement('li', { className: `readiness__item readiness__item--${row.isOk ? 'ok' : 'short'}`, dataset: { testid: `ready-${row.id}`, status: row.isOk ? 'ok' : 'short' } }, [
+        createElement('span', { className: 'readiness__mark', 'aria-hidden': 'true', text: row.isOk ? '✓' : '!' }),
+        createElement('span', { className: 'readiness__text' }, [createElement('span', { className: 'visually-hidden', text: row.isOk ? 'Ready. ' : 'Short. ' }), row.text]),
+        !row.isOk && canTrade ? createButton({ label: row.fixLabel, action: 'fixReadiness', argument: row.id, testId: `fix-${row.id}`, variant: 'secondary', className: 'readiness__fix' }) : null,
+      ]))),
+    ]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Margin notes, letters, chapter end (v4 N2, N3, N4), load remedies (F5)
+  // ---------------------------------------------------------------------------
+
+  function createMarginNote(noteId) {
+    return createElement('aside', { className: 'coach', role: 'note', dataset: { testid: `note-${noteId}` } }, [
+      createElement('h2', { className: 'coach__title', text: copy('coach.title') }),
+      createElement('p', { className: 'paragraph', text: copy(`coach.${noteId}`) }),
+      createButton({ label: copy('coach.understood'), action: 'dismissNote', argument: noteId, testId: `note-ok-${noteId}`, variant: 'quiet' }),
+    ]);
+  }
+
+  /** The red seal on a letter that has not been opened yet. */
+  function createLetterSeal(letter) {
+    return createButton({ label: copy('letter.seal'), action: 'openLetter', argument: letter.id, testId: 'letter-seal', variant: 'secondary', className: 'letter-seal' });
+  }
+
+  function openLetter(letter) {
+    openSheet({
+      title: `Letter ${letter.chapterNumber}: ${Story.getChapter(letter.chapterNumber).title}`, testId: 'letter-sheet',
+      build(body) {
+        body.appendChild(createElement('div', { className: 'letter', dataset: { testid: 'letter-text' } }, createParagraphs(letter.paragraphs)));
+        body.appendChild(createButton({ label: 'Close', action: 'closeSheet', variant: 'primary', testId: 'letter-close' }));
+      },
+    });
+  }
+
+  let chapterModal = null;
+
+  /**
+   * The chapter-end screen. It is not dismissible: the player chooses Continue or Rest here.
+   * @param {{chapter:Object, days:number, alive:number, partySize:number, conditionWord:string, showRatings:boolean, nextChapter:Object|null}} view
+   */
+  function openChapterEnd(view) {
+    if (chapterModal) return;
+    chapterModal = openModal({
+      title: copy('chapter.end.title', { n: view.chapter.number, chapterTitle: view.chapter.title }), icon: '📜', isDismissible: false, testId: 'chapter-end',
+      build(body) {
+        body.appendChild(createElement('p', { className: 'paragraph', text: copy('chapter.end.summary', { days: view.days, alive: view.alive, party: view.partySize, condition: view.conditionWord }) }));
+        body.appendChild(createElement('h3', { className: 'card-title', text: copy('chapter.end.learned') }));
+        body.appendChild(createElement('ul', { className: 'record-list' }, view.chapter.learned.map((text) => createElement('li', { text }))));
+        if (view.showRatings) {
+          body.appendChild(createRadioGroup('How much are you enjoying the journey?', [1, 2, 3, 4, 5].map((number) => ({ id: String(number), label: String(number) })), null, 'rateEnjoyment', 'rate-enjoy', '1 is not at all, 5 is very much.'));
+          body.appendChild(createRadioGroup('Are you learning something about the road?', [{ id: 'yes', label: 'Yes, a lot' }, { id: 'little', label: 'A little' }, { id: 'no', label: 'No' }], null, 'rateLearning', 'rate-learn'));
+          body.appendChild(createElement('p', { className: 'footnote', id: 'rating-thanks', role: 'status', 'aria-live': 'polite' }));
+        }
+        body.appendChild(createButton({ label: copy('chapter.end.continue', { next: view.chapter.number + 1 }), action: 'chapterContinue', testId: 'chapter-continue', variant: 'primary' }));
+        body.appendChild(createButton({ label: copy('chapter.end.rest'), action: 'chapterRest', testId: 'chapter-rest' }));
+      },
+    });
+  }
+
+  function closeChapterEnd() {
+    if (!chapterModal) return;
+    chapterModal.close();
+    chapterModal = null;
+  }
+
+  const isChapterEndOpen = () => chapterModal !== null;
+
+  /** F5: a purchase was blocked by load. Offer the two ways out right where the player is. */
+  function openLoadBlocked(remedies, noteId) {
+    openSheet({
+      title: copy('load.sheet.title'), testId: 'load-blocked',
+      build(body) {
+        body.appendChild(createElement('p', { className: 'paragraph', text: copy('load.blocked') }));
+        if (noteId) body.appendChild(createElement('p', { className: 'footnote', text: copy(`coach.${noteId}`) }));
+        remedies.forEach((remedy) => body.appendChild(createButton({ label: remedy.label, action: 'loadRemedy', argument: remedy.id, testId: `remedy-${remedy.id}`, variant: 'primary' })));
+        body.appendChild(createButton({ label: 'Close', action: 'closeSheet', variant: 'quiet', testId: 'load-blocked-close' }));
+      },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -949,13 +1175,13 @@
     panels.push(createPanel('Sell cargo', cargoPanel));
 
     panels.push(createPanel('Buy supplies', [
-      createElement('p', { className: 'paragraph', text: `Load ${load} of ${capacity} units. Cargo and supplies must fit.` }),
+      createElement('p', { className: 'paragraph', text: `Your animals carry ${load} of ${capacity}. Cargo and supplies must fit.` }),
       createMeter('Load', Math.min(load, capacity), capacity || 1, load > capacity ? 'meter__fill--danger' : ''),
       createElement('div', { className: 'button-column' }, [
         createButton({ label: `Rations ×10 · ${State.getBuyPrice(state, 'rations')} rupees`, action: 'buySupply', argument: 'rations', testId: 'buy-food', isDisabled: state.money < State.getBuyPrice(state, 'rations') }),
         createButton({ label: `Feeds ×10 · ${State.getBuyPrice(state, 'feeds')} rupees`, action: 'buySupply', argument: 'feeds', testId: 'buy-fodder', isDisabled: state.money < State.getBuyPrice(state, 'feeds') }),
         createButton({ label: `Medicine ×1 · ${State.getBuyPrice(state, 'medicine')} rupees (${(State.ensurePool(state, state.nodeId).pools[state.nodeId] || { medicine: 0 }).medicine} in stock)`, action: 'buySupply', argument: 'medicine', testId: 'buy-med' }),
-        createButton({ label: `Waxed cover · ${State.getBuyPrice(state, 'covers')} rupees · 2 LU`, action: 'buySupply', argument: 'covers', testId: 'buy-cover', isDisabled: state.money < State.getBuyPrice(state, 'covers') }),
+        createButton({ label: `Waxed cover · ${State.getBuyPrice(state, 'covers')} rupees · bulky`, action: 'buySupply', argument: 'covers', testId: 'buy-cover', isDisabled: state.money < State.getBuyPrice(state, 'covers') }),
       ]),
     ]));
 
@@ -1050,21 +1276,12 @@
     ].filter(Boolean);
   }
 
-  function createCoachCard(state, edge) {
-    const forecast = Engine.computeSupplyForecast(state, edge);
-    const rationsNeeded = Math.ceil(State.getRationsPerDay(state) * forecast.legDays);
-    return createElement('aside', { className: 'coach', role: 'note' }, [
-      createElement('h2', { className: 'coach__title', text: 'Daulat Beg advises' }),
-      ...createParagraphs([`The whole road to Dhaka is ${World.TOTAL_KOS} kos. Next leg: ${edge.kos} kos, about ${forecast.legDays} days.`, `Carry at least ${rationsNeeded} rations for it, and a few days more for trouble.`]),
-      createButton({ label: 'Got it', action: 'dismissCoach', testId: 'coach-skip', variant: 'quiet' }),
-    ]);
-  }
-
-  function showStop(state) {
+  /** @param {Object} state @param {{marginNoteId?:string|null}} [view] */
+  function showStop(state, view) {
     const node = State.getNode(state);
     const edge = World.getOutgoingEdges(state.nodeId)[0] || null;
-    const sceneCanvas = createSceneCanvas('stop-canvas', `Illustration of ${node.name}`);
-    withContext(sceneCanvas, (ctx) => paintStopScene(ctx, node.id));
+    const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
+    const sceneCanvas = showSceneImage(`stop_${node.id}`, (ctx) => paintStopScene(ctx, node.id), `Illustration of ${node.name}`);
     const tabs = [['town', 'Town'], ['caravan', 'Caravan'], ['learn', 'Learn']];
     const tabList = createElement('div', { className: 'tabs', role: 'tablist', 'aria-label': 'Stop sections' }, tabs.map(([tabId, text]) => createElement('button', { type: 'button', className: `tab ${activeStopTab === tabId ? 'tab--active' : ''}`.trim(), role: 'tab', id: `tab-${tabId}`, 'aria-selected': String(activeStopTab === tabId), 'aria-controls': 'tab-panel', text, dataset: { action: 'selectTab', argument: tabId, testid: `tab-${tabId}`, focusKey: `tab-${tabId}` } })));
     const builders = { town: () => createTownTab(state), caravan: () => createCaravanTab(state, edge), learn: () => createLearnTab(state, edge) };
@@ -1072,21 +1289,28 @@
     const actionBar = createElement('div', { className: 'action-bar' });
     if (edge) {
       const forecast = createForecastLine(state, edge);
+      const readiness = Engine.getLegReadiness(state);
+      const stopName = World.findNode(edge.to).name;
       actionBar.appendChild(createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }));
       actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [
-        createButton({ label: `Set out for ${World.findNode(edge.to).name} \u00b7 ${edge.kos} kos`, action: 'setOut', testId: 'action-setout', variant: 'primary', className: 'button--seal' }),
+        createButton({ label: readiness && !readiness.isAllReady ? copy('setout.risky') : copy('setout.ok', { stopName }), action: 'setOut', testId: 'action-setout', variant: 'primary', className: 'button--seal' }),
         createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' }),
+        createButton({ label: copy('map.button'), action: 'openMap', testId: 'action-map', variant: 'quiet' }),
       ]));
     } else {
       actionBar.appendChild(createElement('p', { className: 'forecast', text: 'Dhaka is the end of the road. Sell what you will, then finish.' }));
-      actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [createButton({ label: 'Finish the journey', action: 'finishJourney', testId: 'action-finish', variant: 'primary' }), createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' })]));
+      actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [createButton({ label: 'Finish the journey', action: 'finishJourney', testId: 'action-finish', variant: 'primary' }), createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' }), createButton({ label: copy('map.button'), action: 'openMap', testId: 'action-map', variant: 'quiet' })]));
     }
-    const showCoach = edge && state.nodeId === World.FIRST_NODE_ID && !state.flags.coachDismissed && state.dayIndex === 0;
+    const letter = Story.getUnopenedLetter(state);
     replaceScreen([createHud(state), createElement('main', { className: 'stop-main' }, [
+      createRouteStrip(state),
       createElement('h1', { className: 'screen-title', text: node.name }),
+      letter ? createLetterSeal(letter) : null,
+      marginNoteId ? createMarginNote(marginNoteId) : null,
+      edge ? createLegBrief(state) : null,
       // Two groups so a wide screen can put the picture beside the tabs; on a phone they simply stack.
       createElement('div', { className: 'stop-grid' }, [
-        createElement('div', { className: 'stop-aside' }, [sceneCanvas, showCoach ? createCoachCard(state, edge) : null]),
+        createElement('div', { className: 'stop-aside' }, [sceneCanvas]),
         createElement('div', { className: 'stop-body' }, [tabList, tabPanel]),
       ]),
     ]), actionBar], 'stop');
@@ -1100,16 +1324,21 @@
   function createTodayBlock(state) {
     const todayEntries = state.log.filter((entry) => entry.dayIndex === state.dayIndex && entry.level !== 'routine');
     const nightLine = [...state.log].reverse().find((entry) => entry.dayIndex === state.dayIndex && entry.level === 'routine' && /^Night in/.test(entry.text));
-    return createElement('section', { className: 'today', 'aria-label': 'Today on the road', dataset: { testid: 'today' } }, [
-      createElement('h3', { className: 'today__title', text: `Day ${state.dayIndex}${nightLine ? ` \u00b7 ${nightLine.text}` : ''}` }),
+    // The evening ledger (v4 N7): what the day cost and what it left, in one place, so news never needs its own sheet.
+    const rationsPerDay = State.getRationsPerDay(state);
+    const daysLeft = rationsPerDay > 0 ? Math.floor(state.supplies.rations / rationsPerDay) : 0;
+    return createElement('section', { className: 'today', 'aria-label': 'Evening ledger', dataset: { testid: 'today' } }, [
+      createElement('h3', { className: 'today__title', text: `${copy('ledger.title', { date: State.formatDate(state) })}${nightLine ? ` \u00b7 ${nightLine.text}` : ''}` }),
+      createElement('p', { className: 'paragraph', dataset: { testid: 'ledger-ate' }, text: copy('ledger.ate', { rations: Math.round(rationsPerDay * 10) / 10, days: daysLeft }) }),
       createElement('ul', { className: 'trail-log', 'aria-live': 'polite' }, todayEntries.length > 0
         ? todayEntries.map((entry) => createElement('li', { text: entry.text }))
-        : [createElement('li', { className: 'trail-log__quiet', text: 'A quiet day on the road.' })]),
+        : [createElement('li', { className: 'trail-log__quiet', text: copy('ledger.quiet') })]),
     ]);
   }
 
   function showRoad(state, view) {
     const edge = State.getEdge(state);
+    const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
     const forecast = createForecastLine(state, edge);
     const canvas = getRoadCanvas();
     const caravanPanel = createElement('details', { className: 'caravan-panel', dataset: { testid: 'caravan-details' } }, [
@@ -1122,6 +1351,8 @@
     replaceScreen([
       createHud(state),
       createElement('main', { className: 'travel-main' }, [
+        createRouteStrip(state),
+        marginNoteId ? createMarginNote(marginNoteId) : null,
         createElement('div', { className: 'travel-scene' }, [
           canvas,
           createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
@@ -1132,6 +1363,7 @@
           createElement('div', { className: 'button-row' }, [
             createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),
             createButton({ label: 'Rest here', action: 'restDay', testId: 'travel-rest' }),
+            createButton({ label: copy('map.button'), action: 'openMap', testId: 'travel-map', variant: 'quiet' }),
           ]),
           state.isPaused ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Tap Resume to continue.' }) : null,
           state.vignette ? createElement('p', { className: 'vignette', dataset: { testid: 'vignette' }, text: state.vignette }) : null,
@@ -1198,7 +1430,7 @@
       createPanel(Content.SUBPLOTS[state.subplotId].label, [createElement('p', { className: 'paragraph', text: SUBPLOT_ENDINGS[state.subplotId][tier] })]),
       dead.length > 0 ? createPanel('Graves', [createElement('ul', { className: 'record-list' }, dead.map((member) => createElement('li', { text: `${member.name} (${member.role ? Config.ROLES[member.role].label : 'Leader'}) · ${member.cause} · day ${member.dayOfDeath}` })))]) : null,
       createPanel('What you learned', learned.length === 0 ? [createElement('p', { className: 'paragraph', text: 'Nothing recorded.' })] : [createElement('ul', { className: 'record-list' }, learned.map((card) => createElement('li', { text: card.title })))]),
-      createPanel('Tell us how it went', [
+      state.flags && state.flags.rated ? null : createPanel('Tell us how it went', [
         createRadioGroup('How much did you enjoy the journey?', [1, 2, 3, 4, 5].map((number) => ({ id: String(number), label: String(number) })), null, 'rateEnjoyment', 'rate-enjoy', '1 is not at all, 5 is very much.'),
         createRadioGroup('Did you learn something about the road?', [{ id: 'yes', label: 'Yes, a lot' }, { id: 'little', label: 'A little' }, { id: 'no', label: 'No' }], null, 'rateLearning', 'rate-learn'),
         createElement('p', { className: 'footnote', id: 'rating-thanks', role: 'status', 'aria-live': 'polite' }),
@@ -1224,6 +1456,10 @@
       title: 'Codex', testId: 'codex',
       build(body) {
         const learnedIds = state ? state.codex : [];
+        const openedLetters = state && state.story ? Story.LETTERS.filter((letter) => state.story.lettersOpened.includes(letter.id)) : [];
+        body.appendChild(createElement('h3', { className: 'card-title', text: 'Letters' }));
+        if (openedLetters.length === 0) body.appendChild(createElement('p', { className: 'paragraph', text: copy('letters.empty') }));
+        openedLetters.forEach((letter) => body.appendChild(createButton({ label: `${copy('letter.reread')}: Letter ${letter.chapterNumber}, ${Story.getChapter(letter.chapterNumber).title}`, action: 'openLetter', argument: letter.id, testId: `reread-${letter.id}`, variant: 'quiet' })));
         World.NODES.forEach((node) => {
           const cards = Content.CODEX.filter((card) => card.nodeId === node.id);
           if (cards.length === 0) return;
@@ -1394,7 +1630,7 @@
   }
 
   namespace.UI = Object.freeze({
-    initialize, showTitle, showOpening, readOpeningName, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
+    initialize, showTitle, showStart, readStartName, showSceneImage, getImageUrl, getImageAlt, openLetter, openChapterEnd, closeChapterEnd, isChapterEndOpen, openLoadBlocked, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
     openCodex, openLog, openReport, refreshReport, isReportOpen, setReportNotice, showRatingThanks, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
     getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,

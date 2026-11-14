@@ -13,7 +13,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SCRIPT_FILES = ['config.js', 'world.js', 'content.js', 'state.js', 'engine.js', 'events.js'];
+const SCRIPT_FILES = ['config.js', 'world.js', 'content.js', 'story.js', 'state.js', 'engine.js', 'events.js'];
 const MAXIMUM_STEPS_PER_RUN = 6000;
 
 /** Loads the game scripts into a fresh sandbox and returns the Karvanyan namespace. */
@@ -42,6 +42,41 @@ function chooseSafest(state) {
   const available = view.choices.filter((choice) => !choice.reason);
   available.sort((first, second) => TONE_RANK[first.tone] - TONE_RANK[second.tone]);
   return (available[0] || view.choices[0]).id;
+}
+
+/**
+ * A first-timer does what the readiness check tells them: tap the red line's fix until it is green. When load blocks a
+ * purchase they take the first offered remedy (sell two lots, or buy a donkey). They never shop for anything else.
+ */
+function fixReadinessLikeAFirstTimer(state) {
+  let next = state;
+  if (World.findNode(next.nodeId).tier === 'none') return next;
+  for (let guard = 0; guard < 80; guard += 1) {
+    const readiness = Engine.getLegReadiness(next);
+    if (!readiness) break;
+    const kind = !readiness.food.isOk ? 'rations' : (!readiness.feed.isOk ? 'feeds' : null);
+    if (!kind) break;
+    const bought = Engine.buySupply(next, kind);
+    if (!bought.reason) { next = bought.state; continue; }
+    if (bought.reason === 'Not enough rupees.' && next.cargo && next.cargo.units > 0) {
+      // The red money line offers "Sell cargo"; a first-timer sells a quarter and tries again.
+      next = State.sellCargoLot(next, 0.25);
+      continue;
+    }
+    if (bought.reasonCode !== 'load') break;
+    const remedy = Engine.getLoadRemedies(next)[0];
+    if (!remedy) break;
+    const fixed = Engine.applyLoadRemedy(next, remedy.id);
+    if (fixed.reason) break;
+    next = fixed.state;
+  }
+  return next;
+}
+
+/** A hurried player taps the first option that is not greyed out. */
+function chooseFirstAvailable(state) {
+  const view = Events.getView(state);
+  return (view.choices.find((choice) => !choice.reason) || view.choices[0]).id;
 }
 
 function chooseRandomly(state, random) {
@@ -120,11 +155,21 @@ const POLICIES = {
   sellAllFirst: { label: 'sell-all-first', sell: 'sellAllFirst' },
   sellAllAtDhaka: { label: 'sell-all-at-dhaka', sell: 'dhakaOnly' },
   random: { label: 'random', random: true },
+  // v4 F12: a first-time player who takes every default, never shops, never rests, taps the first available choice and
+  // treats the sick when the sheet says so. This is the bot the v4 balance gate is measured against.
+  defaultHuman: { label: 'defaultHuman (first-timer, all defaults)', human: true },
 };
+
+/** What the start screen preselects: healer, handler and cook, safe cargo share, 8 packs each (v4 N1 and F3). */
+const DEFAULT_HUMAN_SETUP = Object.freeze({ cargoShare: 0.4, candidateIds: ['hakim_jafar', 'sher_dil', 'bibi_gulnar'], rationPacks: 8, feedPacks: 8, extraAnimals: [] });
 
 function buildSetup(archetypeId, seed, monthIndex, policy) {
   const archetype = Config.ARCHETYPES.find((item) => item.id === archetypeId);
   const subplots = ['book', 'spy', 'lover', 'government'];
+  if (policy.human) {
+    const persianDonkey = archetypeId === 'persian' ? ['donkey'] : [];
+    return { ...DEFAULT_HUMAN_SETUP, extraAnimals: persianDonkey, archetypeId, leaderName: archetype.names[0], startMonthIndex: monthIndex, subplotId: subplots[seed % 4], worldSeed: seed, scout: true };
+  }
   return {
     archetypeId, leaderName: archetype.names[0], cargoShare: policy.random ? 0.5 : 0.35,
     candidateIds: policy.random ? ['naseer', 'gul_zaman', 'karim'] : ['hakim_jafar', 'sher_dil', 'naseer'],
@@ -133,6 +178,7 @@ function buildSetup(archetypeId, seed, monthIndex, policy) {
 }
 
 function nightChoiceFor(state, policy, random) {
+  if (policy.human) return State.getLodgingFee(state) <= state.money ? 'sarai' : 'camp';
   if (policy.random) return random.chance(0.5) ? 'sarai' : 'camp';
   const bad = ['rain', 'monsoon', 'snow', 'cold', 'extreme', 'fog'].includes(state.weather.today);
   return bad || State.getSickCount(state) > 0 ? 'sarai' : 'camp';
@@ -141,6 +187,16 @@ function nightChoiceFor(state, policy, random) {
 function handleStop(state, random, policy) {
   let next = state;
   next = State.ensurePool(next, next.nodeId);
+  if (policy.human) {
+    // The decision sheet says "Rest here" when someone is ill; a first-timer takes it, for up to two days.
+    next = treatAll(next, random);
+    for (let rest = 0; rest < 2 && next.phase === 'stop' && !next.pending && next.party.some((member) => member.isAlive && member.illness); rest += 1) {
+      next = Engine.restDay(next, random, { saraiPolicy: 'never' });
+      while (next.pending && next.pending.kind === 'provision') next = Engine.resolveProvision(next, random, null, { saraiPolicy: 'never' });
+      next = treatAll(next, random);
+    }
+    return next.phase === 'stop' && !next.pending ? fixReadinessLikeAFirstTimer(next) : next;
+  }
   if (policy.random) {
     next = { ...next, pace: random.pick(Object.keys(Config.PACES)), rationLevel: random.pick(Object.keys(Config.RATIONS)) };
     if (random.chance(0.5)) next = Engine.buySupply(next, random.pick(['rations', 'feeds', 'medicine'])).state;
@@ -196,11 +252,21 @@ export function playRun(policyName, archetypeId, seed, monthIndex, trace) {
   let state = State.createNewGame(buildSetup(archetypeId, seed, monthIndex, policy));
   const saraiPolicy = policy.saraiPolicy || 'ask';
   const options = { saraiPolicy };
+  // v4 balance-gate measurements: how a run does on the first chapter, and how many decisions interrupt travel there.
+  let reachedAttockAlive = false;
+  let decisionsBeforeAttock = 0;
+  let travelDaysAtAttock = 0;
 
   for (let step = 0; step < MAXIMUM_STEPS_PER_RUN && state.phase !== 'ended'; step += 1) {
+    if (!reachedAttockAlive && state.nodeId === 'attock' && state.phase === 'stop' && State.getLivingCount(state) > 0) {
+      reachedAttockAlive = state.supplies.rations > 0; travelDaysAtAttock = state.stats.travelDays; reachedAttockAlive = reachedAttockAlive || false;
+      if (!reachedAttockAlive) reachedAttockAlive = State.getLivingCount(state) > 0 && state.supplies.rations > 0;
+    }
     if (state.pending) {
       const pending = state.pending;
+      if (!travelDaysAtAttock && ['storylet', 'crossing', 'checkpoint'].includes(pending.kind) && pending.id !== 'checkpoint_generic_never') decisionsBeforeAttock += 1;
       if (pending.kind === 'provision') {
+        if (policy.human) { state = Engine.resolveProvision(state, random, null, options); continue; }
         const play = policy.provisionSpam || (!policy.random && state.supplies.rations < 30 && pending.data.rating >= 1.5) || (policy.random && random.chance(0.5));
         state = Engine.resolveProvision(state, random, play ? 0.55 : null, options);
       } else if (pending.kind === 'night') {
@@ -210,7 +276,7 @@ export function playRun(policyName, archetypeId, seed, monthIndex, trace) {
         state = { ...state, pending: null };
         if (state.phase === 'stop') state = Engine.beginLeg(state);
       } else {
-        const choiceId = policy.random ? chooseRandomly(state, random) : chooseSafest(state);
+        const choiceId = policy.random ? chooseRandomly(state, random) : (policy.human ? chooseFirstAvailable(state) : chooseSafest(state));
         const outcome = Events.choose(state, choiceId, random, options);
         if (!outcome) throw new Error(`Stuck on ${pending.kind} ${pending.id}`);
         state = outcome.state;
@@ -248,6 +314,8 @@ export function playRun(policyName, archetypeId, seed, monthIndex, trace) {
   return {
     won: state.outcome.type === 'arrived', days: state.dayIndex, score: state.outcome.score, ratio: state.outcome.ratio,
     cause: state.outcome.cause, stats, idleShare: state.dayIndex > 0 ? stats.idleDays / state.dayIndex : 0,
+    reachedAttockAlive, decisionsPerTravelDay: travelDaysAtAttock > 0 ? decisionsBeforeAttock / travelDaysAtAttock : null,
+    endedOnFinalLeg: state.nodeId === 'makhsusabad' || state.edgeId === 'makhsusabad-dhaka',
   };
 }
 
@@ -266,6 +334,9 @@ function summarise(results) {
     provisionShare: Math.round(100 * mean(results.map((result) => result.stats.provisionRations / Math.max(1, result.stats.rationsEaten)))),
     idlePercent: Math.round(100 * mean(results.map((result) => result.idleShare))),
     causes,
+    attockPercent: Math.round((100 * results.filter((result) => result.reachedAttockAlive).length) / results.length),
+    decisionsPerDay: Math.round(100 * mean(results.map((result) => result.decisionsPerTravelDay).filter((value) => value !== null))) / 100,
+    finalLegDeathPercent: Math.round((100 * results.filter((result) => !result.won && result.endedOnFinalLeg).length) / results.length),
   };
 }
 
@@ -281,10 +352,10 @@ function main() {
       for (let seed = 1; seed <= runsPerArchetype; seed += 1) results.push(playRun(policyName, archetype.id, seed * 7919 + 13, startMonths[seed % startMonths.length]));
       everything.push(...results);
       const summary = summarise(results);
-      console.log(`${archetype.id.padEnd(9)} ${archetype.difficultyLabel.padEnd(8)} win ${String(summary.winPercent).padStart(3)}%  days ${summary.meanDays}  ratio ${summary.meanRatio}  winScore ${summary.meanWinScore}  lossScore ${summary.meanLossScore}  sarai ${summary.saraiShare}%  prov ${summary.provisionShare}%  idle ${summary.idlePercent}%  deaths ${JSON.stringify(summary.causes)}`);
+      console.log(`${archetype.id.padEnd(9)} ${archetype.difficultyLabel.padEnd(8)} win ${String(summary.winPercent).padStart(3)}%  days ${summary.meanDays}  ratio ${summary.meanRatio}  winScore ${summary.meanWinScore}  lossScore ${summary.meanLossScore}  sarai ${summary.saraiShare}%  prov ${summary.provisionShare}%  idle ${summary.idlePercent}%  attock ${summary.attockPercent}%  dec/day ${summary.decisionsPerDay}  lastLegDeath ${summary.finalLegDeathPercent}%  deaths ${JSON.stringify(summary.causes)}`);
     });
     const total = summarise(everything);
-    console.log(`ALL       win ${total.winPercent}%  days ${total.meanDays}  ratio ${total.meanRatio}  winScore ${total.meanWinScore}  lossScore ${total.meanLossScore}`);
+    console.log(`ALL       attock ${total.attockPercent}%  lastLegDeath ${total.finalLegDeathPercent}%  win ${total.winPercent}%  days ${total.meanDays}  ratio ${total.meanRatio}  winScore ${total.meanWinScore}  lossScore ${total.meanLossScore}`);
   });
 }
 

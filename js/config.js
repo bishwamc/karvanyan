@@ -10,8 +10,9 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '3.0.1';
-  const SAVE_SCHEMA_VERSION = 2;
+  const GAME_VERSION = '4.0.0';
+  const SAVE_SCHEMA_VERSION = 3;
+  const MIN_LOADABLE_SCHEMA_VERSION = 2;
 
   /** Where the game lives and where players send feedback. Change the address here if the site moves. */
   const SITE = Object.freeze({ DISPLAY_ADDRESS: 'bishwamc.github.io/karvanyan', FULL_ADDRESS: 'https://bishwamc.github.io/karvanyan/' });
@@ -135,6 +136,7 @@
     ANIMAL_SALE_FACTOR: Object.freeze({ plain: 0.55, accountant: 0.85 }),
     SURPLUS_SALE_FACTOR: Object.freeze({ plain: 0.4, accountant: 0.7 }),
     ANIMAL_BODY_VALUE_FACTOR: 0.6,
+    FINAL_MARKET_SUPPLY_FACTOR: 0.4,
     SURVIVOR_VALUE: 0,
   });
 
@@ -173,6 +175,14 @@
     HEAT_SICK_CHANCE: 0.06, SARAI_KITCHEN_DYSENTERY: 0.03, KITCHEN_SECOND_NIGHT_SKIP: 0.5,
     GUARD_DESERT_DAYS: 2, GUIDE_SPEED_BONUS: 0.15, DEFAULT_FORECAST_ACCURACY: 0.75,
     COLD_FUEL_RATIONS: 1, EXHAUSTION_HP: 40,
+    // A new caravan never starts more than this share loaded, so the player can still buy food at Kabul (v4 F3).
+    START_LOAD_LIMIT_SHARE: 0.85,
+    // The day-3 crisis fires on this travel day, and its "spread the load" choice slows the caravan to this factor for 3 days (v4).
+    // Readiness check: food and feed should cover the leg plus this many spare days.
+    READINESS_MARGIN_DAYS: 2,
+    // Speed on the delta leg to Dhaka: boatmen and raised causeways make it less slow than v3's 0.8 (v4 F11).
+    DELTA_TERRAIN_FACTOR: 0.95,
+    CRISIS_TRAVEL_DAY: 3, CRISIS_SLOW_FACTOR: 0.8,
     LEADER_SUCCESSION_SCORE_FACTOR: 0.9, SUBPLOT_BONUS_CAP: 150, CODEX_POINTS: 2, CODEX_CAP_FRACTION: 0.15,
     DEATH_SCORE_FRACTION: 0.12, SCORE_SCALE: 1000, SURVIVOR_BASE_WEIGHT: 0.6,
     MIN_PRICE_RUPEES: 1,
@@ -243,7 +253,7 @@
   });
 
   namespace.Config = Object.freeze({
-    GAME_VERSION, SAVE_SCHEMA_VERSION, SITE, FEEDBACK, ANALYTICS, STORAGE_KEYS, LIMITS, CANVAS, CALENDAR, PACES, RATIONS,
+    GAME_VERSION, SAVE_SCHEMA_VERSION, MIN_LOADABLE_SCHEMA_VERSION, SITE, FEEDBACK, ANALYTICS, STORAGE_KEYS, LIMITS, CANVAS, CALENDAR, PACES, RATIONS,
     WEATHER_STATES, WEATHER, ILLNESSES, UNITS, ANIMALS, CARGO, CARGO_DEMAND_INDEX, ROLES, SERVICES,
     PRICES, MARKET, PROVISION, TUNING, CROSSING, ARCHETYPES, CARGO_PRESETS, DEFAULT_SETTINGS,
   });
