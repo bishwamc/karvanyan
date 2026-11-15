@@ -643,3 +643,177 @@ html, body { overscroll-behavior-y: contain; }
   .travel-main > .travel-ledger { grid-column: 1; grid-row: 3; order: 0; }
   .travel-main > .travel-scene { grid-column: 2; grid-row: 3; }
 }
+
+/* ==========================================================================
+   v4.1.0 screens: road control bar, ticker, paused numbers, compact party, sheets for the phone stop screen, hunt.
+   Colour is never the only signal: every status here also has a mark and a word.
+   ========================================================================== */
+
+/* ---------- Compact party list (road ledger, caravan sheet, paused screen) ---------- */
+.party-compact { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
+.party-compact__row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-3); padding: var(--space-2) 0 var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); border-left: 4px solid var(--color-border); font-size: var(--text-small); font-variant-numeric: lining-nums tabular-nums; }
+.party-compact__row--ill { border-left-color: var(--color-danger); }
+.party-compact__row--weak { border-left-color: var(--color-warning); }
+.party-compact__row--well { border-left-color: var(--color-safe); color: var(--color-text); }
+.party-compact__row--dead { border-left-color: var(--color-border); color: var(--color-text-muted); text-decoration: line-through; }
+.party-compact__name { font-weight: 700; font-family: var(--font-display); }
+.party-compact__health { color: var(--color-text-muted); }
+.party-compact__status { font-weight: 700; margin-left: auto; }
+.party-compact__treat { flex: 1 1 100%; margin-top: var(--space-1); }
+.party-compact__hint { flex: 1 1 100%; color: var(--color-text-muted); }
+
+/* ---------- Numbers that stay in view above a sheet ---------- */
+.sheet-ribbon { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: var(--color-surface-raised); border: 1px solid var(--color-border); font-size: var(--text-small); font-variant-numeric: lining-nums tabular-nums; }
+.sheet-ribbon__name { color: var(--color-text-muted); margin-right: var(--space-1); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.06em; }
+.sheet-ribbon__sub { color: var(--color-text-muted); margin-left: var(--space-1); }
+
+/* ---------- Section rows (phone stop screen) ---------- */
+.section-rows { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.section-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; min-height: 3.5rem; padding: var(--space-2) var(--space-3); background: var(--color-surface); color: var(--color-text); border: 2px solid var(--color-border); border-radius: var(--radius-small); box-shadow: var(--jadwal-light); text-align: left; cursor: pointer; font: inherit; }
+.section-row:active { filter: brightness(0.93); }
+.section-row__text { display: flex; flex-direction: column; min-width: 0; }
+.section-row__title { font-family: var(--font-display); font-weight: 700; font-size: var(--text-base); }
+.section-row__sub { color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.3; }
+.section-row__chevron { font-size: 1.75rem; line-height: 1; color: var(--color-rule); flex: none; }
+
+/* ---------- Leg brief on a phone: prose folds away, readiness stays ---------- */
+.leg-brief__more { margin: 0 0 var(--space-2); }
+.leg-brief__more summary { min-height: var(--tap-target); display: flex; align-items: center; cursor: pointer; font-family: var(--font-display); font-weight: 700; color: var(--color-rule); }
+.readiness__fix-all { width: 100%; margin-top: var(--space-2); }
+
+/* ---------- Ticker: the evening ledger, two lines ---------- */
+.today__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.today__log { min-height: var(--tap-target); padding: 0 var(--space-2); flex: none; }
+.today__ate { margin: 0 0 var(--space-1); font-size: var(--text-small); }
+
+/* ---------- Pace and rations: two short radio rows and one line saying what they do ---------- */
+.travel-pace .stepper { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-1); }
+.travel-pace .stepper__legend { float: none; flex: 0 0 4.75rem; margin: 0; }
+.travel-pace .segments { flex: 1; flex-wrap: nowrap; gap: var(--space-1); }
+.travel-pace .segment { flex: 1 1 0; min-width: 0; }
+.travel-pace .segment__label { padding: var(--space-1); font-size: 0.875rem; }
+.travel-pace .stepper__help { display: none; }
+.travel-effect { margin: 0 0 var(--space-2); color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.3; }
+
+/* ---------- Paused (phone) ---------- */
+.paused { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border: 2px solid var(--color-border); border-left: 6px solid var(--color-safe); background: var(--color-surface); }
+.paused__title { margin: 0 0 var(--space-1); font-size: var(--text-base); text-transform: uppercase; letter-spacing: 0.06em; }
+.paused .card-title { margin: var(--space-2) 0 var(--space-1); }
+
+/* ---------- Road control bar: one big primary, three secondary, all pinned ---------- */
+.road-bar { display: flex; flex-direction: column; gap: var(--space-2); }
+.road-bar .action-bar__buttons { flex-wrap: nowrap; }
+.road-bar__main .button { flex: 1 1 100%; min-height: 3.5rem; font-size: var(--text-base); }
+.road-bar__more .button { flex: 1 1 0; min-width: 0; padding-left: var(--space-1); padding-right: var(--space-1); }
+.key-hint { display: none; margin: 0; color: var(--color-text-muted); font-size: 0.8125rem; text-align: center; }
+
+/* ---------- Hunt, fish, forage: one purpose, one way out ---------- */
+.hunt-ribbon { margin: var(--space-2) 0 0; padding: var(--space-1) var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); font-family: var(--font-display); font-weight: 700; font-size: var(--text-small); font-variant-numeric: lining-nums tabular-nums; }
+.hunt-title { margin: var(--space-2) 0 var(--space-1); font-size: var(--text-large); }
+.hunt-hint { margin: 0 0 var(--space-1); font-size: var(--text-small); }
+.hunt-status { margin: 0; font-weight: 700; }
+.hunt-actions { position: sticky; bottom: 0; z-index: 10; margin: 0 calc(-1 * var(--space-3)); padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom)); background: var(--color-surface); border-top: 2px solid var(--color-border); }
+.hunt-actions .button { width: 100%; min-height: 3.5rem; }
+.hunt-main .scene-canvas { margin: var(--space-2) auto; }
+
+/* ---------- Phones: fit the first screen ---------- */
+@media (max-width: 899px) {
+  /* The strip's drawing is a luxury on a phone; its title and Map link stay (tap it for the journey map). */
+  .stop-main .route-strip__canvas, .travel-main .route-strip__canvas { display: none; }
+  .route-strip { min-height: 0; padding: var(--space-1) var(--space-2); }
+  .route-strip__row { min-height: var(--tap-target); align-items: center; }
+
+  /* The road: a short picture (crop, never squash), tighter margin card, tight ticker. */
+  .travel-scene .scene-canvas { aspect-ratio: 5 / 2; object-fit: cover; object-position: 50% 80%; margin: var(--space-2) auto; }
+  .margin { padding: var(--space-1) var(--space-3); margin-bottom: var(--space-2); }
+  .margin__row { padding: 0 0 var(--space-1); }
+  .margin__title { margin-bottom: 0; }
+  .travel-main .route-label { margin: 0; font-size: var(--text-small); }
+  .travel-progress { height: 0.5rem; margin-bottom: var(--space-1); }
+  .travel-weather { margin: 0 0 var(--space-1); font-size: 0.8125rem; color: var(--color-text-muted); }
+  .today { margin: var(--space-1) 0; padding: var(--space-1) var(--space-3); }
+  .today .trail-log li { font-size: 0.875rem; line-height: 1.3; }
+  .travel-main { padding-bottom: var(--space-2); }
+
+  /* The stop: a banner picture, the brief and readiness first, section rows under it. */
+  .stop-aside .scene-canvas, .stop-aside .scene-image__picture { aspect-ratio: 4 / 1; object-fit: cover; object-position: 50% 70%; margin: var(--space-2) auto; }
+  .stop-main .screen-title { margin: var(--space-2) 0; font-size: var(--text-large); }
+  .leg-brief { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); }
+  .leg-brief__title { margin-bottom: var(--space-1); font-size: var(--text-base); }
+}
+
+/* ---------- Wide screens: road pane layout, key hints ---------- */
+@media (min-width: 900px) {
+  .road-bar { flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .road-bar .action-bar__buttons { flex: 1 1 auto; }
+  .road-bar__main { flex: 0 0 16rem; }
+  .road-bar__main .button { min-height: var(--tap-target); }
+  .travel-pace .stepper__help { display: block; font-size: 0.8125rem; }
+  .travel-effect { display: none; }
+}
+@media (min-width: 900px) and (hover: hover) { .key-hint { display: block; flex: 1 1 100%; } }
+
+/* ---------- Short landscape phones: the road bar goes to one row ---------- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .road-bar { flex-direction: row; align-items: center; }
+  .road-bar .action-bar__buttons { flex: 1 1 auto; }
+  .road-bar__main { flex: 0 0 11rem; }
+  .road-bar__main .button { min-height: var(--tap-target); }
+  .travel-scene .scene-canvas { aspect-ratio: 4 / 1; }
+}
+
+/* ---------- v4.1.0 fit pass ---------- */
+/* Same weight as the older action-bar rule, and later, so the four road buttons share the row. */
+.road-bar__more .button:not(.button--primary) { flex: 1 1 auto; min-width: 0; padding-left: var(--space-1); padding-right: var(--space-1); }
+@media (max-width: 899px) {
+  .section-rows { grid-template-columns: 1fr 1fr; }
+  .section-row { min-height: 4.25rem; padding: var(--space-2); box-shadow: none; }
+  .section-row__sub { font-size: 0.75rem; }
+  .section-row__chevron { display: none; }
+  /* The route strip's job on the road is done by the progress line and the Map button in the bar. */
+  .travel-main .route-strip { display: none; }
+  /* The one-line effect text stays for screen readers but costs no height; the margin card shows what changed. */
+  .travel-effect { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+}
+
+/* ---------- v4.1.0 fit pass 2: legend beside its buttons, weather on the label line, a short ticker ---------- */
+.travel-pace .stepper { display: block; }
+.travel-pace .stepper::after { content: ""; display: table; clear: both; }
+.travel-pace .stepper__legend { float: left; width: 4.75rem; margin: 0; padding: 0; line-height: var(--tap-target); }
+.travel-pace .segments { margin-left: 4.75rem; }
+.travel-pace .stepper__help { clear: both; margin: 0 0 var(--space-1); }
+@media (max-width: 899px) {
+  .travel-scene .scene-canvas { aspect-ratio: 3 / 1; }
+  .travel-main .route-label { float: left; }
+  .travel-weather { float: right; margin: 0; line-height: 1.5; }
+  .travel-progress { display: block; clear: both; }
+  /* Ticker: the date is already in the top bar, so the title becomes screen-reader text and the Log button sits in the corner. */
+  .today { position: relative; padding-right: 4.5rem; min-height: var(--tap-target); }
+  .today__title { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .today__head { position: static; }
+  .today__log { position: absolute; top: 0; right: 0; }
+  .today__ate { display: none; }
+  .road-bar__main .button { min-height: var(--tap-target); }
+}
+
+/* ---------- v4.1.0 fit pass 3: the control bar sits at the bottom of the screen even when the page is short ---------- */
+@media (max-width: 899px) {
+  /* Plain selectors only (no :has): #app is a full-height column on phones; the footer follows #screen. */
+  #app { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+  #screen { flex: 1 0 auto; }
+  #screen[data-screen="road"], #screen[data-screen="stop"] { flex: 1 0 auto; display: flex; flex-direction: column; }
+  #screen[data-screen="road"] > main, #screen[data-screen="stop"] > main { flex: 1 0 auto; }
+  #screen[data-screen="road"] > .action-bar, #screen[data-screen="stop"] > .action-bar { margin-top: auto; flex: none; }
+  /* The footer's link and version still show on the title and end screens and in Settings; here it would cost a scroll. */
+  #screen[data-screen="road"] ~ #site-footer, #screen[data-screen="stop"] ~ #site-footer { display: none; }
+}
+
+/* ---------- v4.1.0 fit pass 4 ---------- */
+@media (max-width: 899px) {
+  /* The bar sits flush with the bottom edge; the footer (title, end, settings) keeps its own space. */
+  #app { padding-bottom: 0; }
+  #site-footer { margin-bottom: var(--space-5); }
+  /* A short supply list should still fit on one screen: a smaller heading and tighter rows. */
+  .leg-brief__title { font-size: var(--text-small); margin-bottom: 0; }
+  .leg-brief .readiness { margin: 0; }
+}

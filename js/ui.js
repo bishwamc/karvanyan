@@ -169,6 +169,15 @@
       if (!target) return;
       if (target.dataset.changeAction) context.onAction(target.dataset.changeAction, target.value, target);
     });
+    // Turning a phone sideways, or resizing a window across the phone/wide line, redraws the stop or road screen in the other layout.
+    if (typeof window.matchMedia === 'function') {
+      const query = window.matchMedia(PHONE_QUERY);
+      const onLayoutChange = () => {
+        const screenName = context.screenElement.dataset.screen;
+        if (screenName === 'stop' || screenName === 'road') context.onAction('relayout');
+      };
+      if (query.addEventListener) query.addEventListener('change', onLayoutChange); else if (query.addListener) query.addListener(onLayoutChange);
+    }
     document.addEventListener('keydown', (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (event.key === 'Enter' && target && target.dataset.enterAction) {
@@ -308,12 +317,15 @@
   function closeTopSheet() {
     const handle = sheetHandles.pop();
     if (handle === reportSheet.handle) { reportSheet.handle = null; reportSheet.notice = null; }
+    if (handle === sectionSheet.handle) { sectionSheet.handle = null; sectionSheet.kind = null; }
     if (handle) handle.close();
   }
 
   function closeAllModals() {
     reportSheet.handle = null;
     reportSheet.notice = null;
+    sectionSheet.handle = null;
+    sectionSheet.kind = null;
     while (sheetHandles.length > 0) sheetHandles.pop().close();
     if (encounterModal) { encounterModal.close(); encounterModal = null; }
     if (chapterModal) { chapterModal.close(); chapterModal = null; }
@@ -751,6 +763,132 @@
 
   /** One short line per member, always visible on the road: name, exact health, illness. */
   // ---------------------------------------------------------------------------
+  // Phone or wide layout, compact party list, section sheets (v4.1)
+  // ---------------------------------------------------------------------------
+
+  /** Phones (and narrow windows) get sheets and a pinned control bar; wide screens keep panes and tabs. */
+  const PHONE_QUERY = '(max-width: 899px)';
+  function isPhoneLayout() {
+    return typeof window.matchMedia === 'function' && window.matchMedia(PHONE_QUERY).matches;
+  }
+
+  /**
+   * The party for a small space: people who need care first (worst first), exact health out of 100,
+   * a Treat button that names the person, and the well ones on one line. Marks and words, never colour alone.
+   */
+  function createPartyCompact(state, canTreat) {
+    const needCare = [];
+    const well = [];
+    state.party.forEach((member, index) => {
+      if (!member.isAlive) return;
+      (member.illness || member.hp < getWeakHp() ? needCare : well).push({ member, index });
+    });
+    needCare.sort((first, second) => (second.member.illness ? 1 : 0) - (first.member.illness ? 1 : 0) || first.member.hp - second.member.hp);
+    const items = needCare.map(({ member, index }) => {
+      const status = member.illness ? Config.ILLNESSES[member.illness].label : 'Weak';
+      const row = createElement('li', { className: `party-compact__row party-compact__row--${member.illness ? 'ill' : 'weak'}`, dataset: { testid: `care-${index}` } }, [
+        createElement('span', { className: 'party-compact__name', text: member.name }),
+        createElement('span', { className: 'party-compact__health', text: `${Math.round(member.hp)} / 100` }),
+        createElement('span', { className: 'party-compact__status', text: `${member.illness ? '!!' : '!'} ${status}` }),
+      ]);
+      if (canTreat && member.illness) {
+        row.appendChild(createButton({ label: `Treat ${member.name} · 1 medicine (${state.supplies.medicine} left)`, action: 'treatMember', argument: member.id, testId: `treat-${index}`, variant: 'primary', isDisabled: state.supplies.medicine < 1, className: 'party-compact__treat' }));
+      } else if (canTreat) {
+        row.appendChild(createElement('span', { className: 'party-compact__hint', text: 'Rest will help. No medicine needed.' }));
+      }
+      return row;
+    });
+    if (well.length > 0) {
+      items.push(createElement('li', { className: 'party-compact__row party-compact__row--well', dataset: { testid: 'party-well' }, text: `✓ ${well.length} well: ${well.map(({ member }) => `${member.name} ${Math.round(member.hp)}`).join(', ')}` }));
+    }
+    state.party.filter((member) => !member.isAlive).forEach((member) => {
+      items.push(createElement('li', { className: 'party-compact__row party-compact__row--dead', text: `${member.name} died · ${member.cause}` }));
+    });
+    return createElement('ul', { className: 'party-compact', 'aria-label': 'Party health, exact numbers', dataset: { testid: 'party-compact' } }, items);
+  }
+
+  /** The numbers that must stay in view while a sheet covers the screen (so buying shows its effect). */
+  function createSheetRibbon(state) {
+    const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
+    const forecast = edge ? Engine.computeSupplyForecast(state, edge) : null;
+    const part = (name, value, sub) => createElement('span', { className: 'sheet-ribbon__item' }, [
+      createElement('span', { className: 'sheet-ribbon__name', text: name }),
+      createElement('strong', { text: value }),
+      sub ? createElement('span', { className: 'sheet-ribbon__sub', text: sub }) : null,
+    ]);
+    return createElement('p', { className: 'sheet-ribbon', dataset: { testid: 'sheet-ribbon' } }, [
+      part('Rupees', String(Math.floor(state.money))),
+      part('Rations', String(Math.floor(state.supplies.rations)), forecast ? `≈ ${forecast.rationDays} d` : null),
+      part('Feeds', String(Math.floor(state.supplies.feeds)), forecast ? `≈ ${forecast.feedDays} d` : null),
+    ]);
+  }
+
+  /** One tappable row that opens a section sheet: a title, one line of what is inside, and a chevron. */
+  function createSectionRow(kind, titleText, subText, testId) {
+    return createElement('button', { type: 'button', className: 'section-row', dataset: { action: 'openSection', argument: kind, testid: testId, focusKey: testId } }, [
+      createElement('span', { className: 'section-row__text' }, [
+        createElement('span', { className: 'section-row__title', text: titleText }),
+        createElement('span', { className: 'section-row__sub', text: subText }),
+      ]),
+      createElement('span', { className: 'section-row__chevron', 'aria-hidden': 'true', text: '›' }),
+    ]);
+  }
+
+  /** The open section sheet, if any. Like the decision sheet, it is redrawn with the latest state after every change. */
+  const sectionSheet = { handle: null, kind: null, state: null };
+  const SECTION_TITLES = Object.freeze({ town: 'Town: trade', caravan: 'Caravan', learn: 'Learn', rest: 'Rest here', roadCaravan: 'Caravan', supplies: 'Supplies, exact' });
+
+  function buildSectionBody(body) {
+    const state = sectionSheet.state;
+    const edge = World.getOutgoingEdges(state.nodeId)[0] || null;
+    body.appendChild(createSheetRibbon(state));
+    let parts = [];
+    if (sectionSheet.kind === 'town') parts = createTownTab(state);
+    else if (sectionSheet.kind === 'caravan') parts = createCaravanTab(state, edge, { skipRest: true });
+    else if (sectionSheet.kind === 'learn') parts = createLearnTab(state, edge);
+    else if (sectionSheet.kind === 'rest') parts = [createRestPanel(state)];
+    else if (sectionSheet.kind === 'roadCaravan') {
+      const hiredText = state.hired.length === 0 ? 'No hired hands.' : state.hired.map((hire) => `${hire.name} (${hire.type}, ${hire.tier})`).join(', ');
+      parts = [createPanel('Your party', [createPartyCompact(state, true), createElement('p', { className: 'paragraph', text: `Hired hands: ${hiredText}` })])];
+    } else if (sectionSheet.kind === 'supplies') parts = [createCaravanSnapshot(state)];
+    parts.forEach((part) => body.appendChild(part));
+    body.appendChild(createElement('div', { className: 'report-actions' }, [createButton({ label: 'Done', action: 'closeSheet', variant: 'primary', testId: 'section-close' })]));
+  }
+
+  function openSectionSheet(kind, state) {
+    if (!SECTION_TITLES[kind]) return;
+    sectionSheet.state = state;
+    if (sectionSheet.handle && sectionSheet.kind === kind) { sectionSheet.handle.refresh(buildSectionBody); return; }
+    if (sectionSheet.handle) closeTopSheet();
+    sectionSheet.kind = kind;
+    sectionSheet.handle = openSheet({ title: SECTION_TITLES[kind], testId: `section-${kind}`, build: buildSectionBody });
+  }
+
+  function refreshSectionSheet(state) {
+    if (!sectionSheet.handle) return;
+    sectionSheet.state = state;
+    sectionSheet.handle.refresh(buildSectionBody);
+  }
+
+  const isSectionSheetOpen = () => sectionSheet.handle !== null;
+
+  /** The road's pinned control bar: one big primary, three secondary. The map opens from the route strip. */
+  function createRoadBar(state) {
+    return createElement('div', { className: 'action-bar road-bar', dataset: { testid: 'road-bar' } }, [
+      createElement('div', { className: 'action-bar__buttons road-bar__main' }, [
+        createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary', ariaLabel: state.isPaused ? 'Resume travelling' : 'Pause travelling' }),
+      ]),
+      createElement('div', { className: 'action-bar__buttons road-bar__more' }, [
+        createButton({ label: 'Rest a day', action: 'restDay', testId: 'travel-rest' }),
+        createButton({ label: 'Caravan', action: 'openSection', argument: 'roadCaravan', testId: 'travel-caravan' }),
+        createButton({ label: 'Supplies', action: 'openSection', argument: 'supplies', testId: 'travel-supplies' }),
+        createButton({ label: copy('map.button'), action: 'openMap', testId: 'travel-map' }),
+      ]),
+      createElement('p', { className: 'key-hint', text: 'Keys: Space pause · R rest · C caravan · S supplies · L log · M map' }),
+    ]);
+  }
+
+  // ---------------------------------------------------------------------------
   // Margin card (v4.0.2): days in hand against days the next stop needs
   // ---------------------------------------------------------------------------
 
@@ -1100,7 +1238,7 @@
   // Leg brief and readiness check (v4 N6)
   // ---------------------------------------------------------------------------
 
-  function createLegBrief(state) {
+  function createLegBrief(state, isPhone) {
     const brief = Engine.getLegBrief(state);
     const readiness = Engine.getLegReadiness(state);
     if (!brief || !readiness) return null;
@@ -1112,16 +1250,23 @@
       { id: 'money', isOk: readiness.money.isOk, text: copy(readiness.money.isOk ? 'ready.money.ok' : 'ready.money.short', { cost: readiness.money.costRupees, have: Math.floor(readiness.money.haveRupees) }), fixLabel: copy('ready.fix.money') },
     ];
     const canTrade = State.getNode(state).tier !== 'none';
-    return createElement('section', { className: 'leg-brief', 'aria-label': 'The road ahead', dataset: { testid: 'leg-brief' } }, [
-      createElement('h2', { className: 'leg-brief__title', text: copy('brief.title', { stopName: brief.stopName }) }),
+    const prose = [
       createElement('p', { className: 'paragraph', text: line }),
       createElement('p', { className: 'paragraph', text: copy('brief.threat', { threat: brief.threatWord }) }),
       createElement('p', { className: 'footnote', text: `Daulat Beg: "${brief.tip}"` }),
+    ];
+    const shortCount = rows.filter((row) => !row.isOk && row.id !== 'money').length;
+    return createElement('section', { className: 'leg-brief', 'aria-label': 'The road ahead', dataset: { testid: 'leg-brief' } }, [
+      createElement('h2', { className: 'leg-brief__title', text: copy('brief.title', { stopName: brief.stopName }) }),
+      // On a phone the prose folds away: the three readiness lines below are what the player acts on.
+      ...(isPhone ? [createElement('details', { className: 'leg-brief__more', dataset: { testid: 'leg-brief-more' } }, [createElement('summary', { text: 'About the road ahead' }), ...prose])] : prose),
       createElement('ul', { className: 'readiness', dataset: { testid: 'readiness' } }, rows.map((row) => createElement('li', { className: `readiness__item readiness__item--${row.isOk ? 'ok' : 'short'}`, dataset: { testid: `ready-${row.id}`, status: row.isOk ? 'ok' : 'short' } }, [
         createElement('span', { className: 'readiness__mark', 'aria-hidden': 'true', text: row.isOk ? '✓' : '!' }),
         createElement('span', { className: 'readiness__text' }, [createElement('span', { className: 'visually-hidden', text: row.isOk ? 'Ready. ' : 'Short. ' }), row.text]),
-        !row.isOk && canTrade ? createButton({ label: row.fixLabel, action: 'fixReadiness', argument: row.id, testId: `fix-${row.id}`, variant: 'secondary', className: 'readiness__fix' }) : null,
+        // On a phone one "Buy what's needed" button covers food and feed; only the money line keeps its own fix.
+        !row.isOk && canTrade && !(isPhone && row.id !== 'money') ? createButton({ label: row.fixLabel, action: 'fixReadiness', argument: row.id, testId: `fix-${row.id}`, variant: 'secondary', className: 'readiness__fix' }) : null,
       ]))),
+      shortCount > 0 && canTrade ? createButton({ label: "Buy what's needed", action: 'fixReadiness', argument: 'all', testId: 'fix-all', variant: 'primary', className: 'readiness__fix-all' }) : null,
     ]);
   }
 
@@ -1289,11 +1434,11 @@
     ]);
   }
 
-  function createCaravanTab(state, edge) {
+  function createCaravanTab(state, edge, options) {
     const hiredText = state.hired.length === 0 ? 'No hired hands.' : state.hired.map((hire) => `${hire.name} (${hire.type}, ${hire.tier})`).join(', ');
     return [
       createPanel('Your party', [createPartyList(state, true), createElement('p', { className: 'paragraph', text: `Hired hands: ${hiredText}` })]),
-      state.phase === 'stop' && state.nodeId !== 'khyber' ? createRestPanel(state) : null,
+      state.phase === 'stop' && state.nodeId !== 'khyber' && !(options && options.skipRest) ? createRestPanel(state) : null,
       createPanel('Pace and rations', [createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'), createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration')]),
       ...createHireSection(state, edge),
     ].filter(Boolean);
@@ -1332,8 +1477,18 @@
     const sceneCanvas = showSceneImage(`stop_${node.id}`, (ctx) => paintStopScene(ctx, node.id), `Illustration of ${node.name}`);
     const tabs = [['town', 'Town'], ['caravan', 'Caravan'], ['learn', 'Learn']];
     const tabList = createElement('div', { className: 'tabs', role: 'tablist', 'aria-label': 'Stop sections' }, tabs.map(([tabId, text]) => createElement('button', { type: 'button', className: `tab ${activeStopTab === tabId ? 'tab--active' : ''}`.trim(), role: 'tab', id: `tab-${tabId}`, 'aria-selected': String(activeStopTab === tabId), 'aria-controls': 'tab-panel', text, dataset: { action: 'selectTab', argument: tabId, testid: `tab-${tabId}`, focusKey: `tab-${tabId}` } })));
+    const isPhone = isPhoneLayout();
     const builders = { town: () => createTownTab(state), caravan: () => createCaravanTab(state, edge), learn: () => createLearnTab(state, edge) };
-    const tabPanel = createElement('div', { className: 'tab-panel', role: 'tabpanel', id: 'tab-panel', 'aria-labelledby': `tab-${activeStopTab}` }, builders[activeStopTab]());
+    // Wide screens keep the three tabs; phones get one row per section, each opening a sheet, so the page never grows.
+    const tabPanel = isPhone ? null : createElement('div', { className: 'tab-panel', role: 'tabpanel', id: 'tab-panel', 'aria-labelledby': `tab-${activeStopTab}` }, builders[activeStopTab]());
+    const careCount = state.party.filter((member) => member.isAlive && (Boolean(member.illness) || member.hp < getWeakHp())).length;
+    const canRest = state.nodeId !== 'khyber';
+    const sectionRows = createElement('div', { className: 'section-rows', dataset: { testid: 'section-rows' } }, [
+      createSectionRow('town', 'Town', node.tier === 'none' ? 'No market here' : 'Sell cargo, buy supplies', 'section-row-town'),
+      createSectionRow('caravan', 'Caravan', careCount > 0 ? `! ${careCount} ${careCount === 1 ? 'needs' : 'need'} care` : 'Party, pace, hire help', 'section-row-caravan'),
+      canRest ? createSectionRow('rest', 'Rest here', 'Heal the sick, for a fee', 'section-row-rest') : null,
+      createSectionRow('learn', 'Learn', 'Rumours, ask around', 'section-row-learn'),
+    ]);
     const actionBar = createElement('div', { className: 'action-bar' });
     if (edge) {
       const forecast = createForecastLine(state, edge);
@@ -1355,11 +1510,11 @@
       createElement('h1', { className: 'screen-title', text: node.name }),
       letter ? createLetterSeal(letter) : null,
       marginNoteId ? createMarginNote(marginNoteId) : null,
-      edge ? createLegBrief(state) : null,
-      // Two groups so a wide screen can put the picture beside the tabs; on a phone they simply stack.
+      edge ? createLegBrief(state, isPhone) : null,
+      // Two groups so a wide screen can put the picture beside the tabs; on a phone the sections are rows that open sheets.
       createElement('div', { className: 'stop-grid' }, [
         createElement('div', { className: 'stop-aside' }, [sceneCanvas]),
-        createElement('div', { className: 'stop-body' }, [tabList, tabPanel]),
+        createElement('div', { className: 'stop-body' }, isPhone ? [sectionRows] : [tabList, tabPanel]),
       ]),
     ]), actionBar], 'stop');
   }
@@ -1368,33 +1523,62 @@
   // Road screen
   // ---------------------------------------------------------------------------
 
-  /** Today's news: every line from today that is not routine, under a one-line header for the night just past. */
+  /**
+   * The ticker (v4.1): the evening ledger's two latest lines, with the full log one tap away.
+   * Fixed to two news lines so the road screen never grows when a busy day arrives.
+   */
   function createTodayBlock(state) {
     const todayEntries = state.log.filter((entry) => entry.dayIndex === state.dayIndex && entry.level !== 'routine');
     const nightLine = [...state.log].reverse().find((entry) => entry.dayIndex === state.dayIndex && entry.level === 'routine' && /^Night in/.test(entry.text));
-    // The evening ledger (v4 N7): what the day cost and what it left, in one place, so news never needs its own sheet.
     const rationsPerDay = State.getRationsPerDay(state);
     const daysLeft = rationsPerDay > 0 ? Math.floor(state.supplies.rations / rationsPerDay) : 0;
+    const latest = todayEntries.slice(-2);
     return createElement('section', { className: 'today', 'aria-label': 'Evening ledger', dataset: { testid: 'today' } }, [
-      createElement('h3', { className: 'today__title', text: `${copy('ledger.title', { date: State.formatDate(state) })}${nightLine ? ` \u00b7 ${nightLine.text}` : ''}` }),
-      createElement('p', { className: 'paragraph', dataset: { testid: 'ledger-ate' }, text: copy('ledger.ate', { rations: Math.round(rationsPerDay * 10) / 10, days: daysLeft }) }),
-      createElement('ul', { className: 'trail-log', 'aria-live': 'polite' }, todayEntries.length > 0
-        ? todayEntries.map((entry) => createElement('li', { text: entry.text }))
+      createElement('div', { className: 'today__head' }, [
+        createElement('h3', { className: 'today__title', text: `${copy('ledger.title', { date: State.formatDate(state) })}${nightLine ? ` · ${nightLine.text}` : ''}` }),
+        createButton({ label: 'Log', action: 'openLog', testId: 'log-full', variant: 'quiet', className: 'today__log', ariaLabel: 'Open the full trail log' }),
+      ]),
+      createElement('p', { className: 'paragraph today__ate', dataset: { testid: 'ledger-ate' }, text: copy('ledger.ate', { rations: Math.round(rationsPerDay * 10) / 10, days: daysLeft }) }),
+      createElement('ul', { className: 'trail-log', 'aria-live': 'polite' }, latest.length > 0
+        ? latest.map((entry) => createElement('li', { text: entry.text }))
         : [createElement('li', { className: 'trail-log__quiet', text: copy('ledger.quiet') })]),
     ]);
+  }
+
+  /** The phone's paused screen: exact health and exact supplies, nothing else competing for the eye. */
+  function createPausedPanel(state) {
+    return createElement('section', { className: 'paused', dataset: { testid: 'paused-panel' }, role: 'status' }, [
+      createElement('h2', { className: 'paused__title', text: 'Paused: the caravan is standing still' }),
+      createElement('h3', { className: 'card-title', text: 'Party, exact health' }),
+      createPartyCompact(state, true),
+      createElement('h3', { className: 'card-title', text: 'Supplies, exact' }),
+      createCaravanSnapshot(state),
+    ]);
+  }
+
+  /** One line saying what the chosen pace and rations do, so the two radio rows can stay short. */
+  function createTravelEffect(state) {
+    return createElement('p', { className: 'travel-effect', dataset: { testid: 'travel-effect' }, text: `${Config.PACES[state.pace].help} ${Config.RATIONS[state.rationLevel].help}` });
   }
 
   function showRoad(state, view) {
     const edge = State.getEdge(state);
     const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
+    const isPhone = isPhoneLayout();
+    const isPausedPhone = isPhone && state.isPaused;
     const canvas = getRoadCanvas();
-    const caravanPanel = createElement('details', { className: 'caravan-panel', dataset: { testid: 'caravan-details' } }, [
-      createElement('summary', { text: 'Caravan: party, animals and supplies' }),
-      createPartyList(state, true),
-      createCaravanSnapshot(state),
-    ]);
-    if (view.isCaravanPanelOpen) caravanPanel.setAttribute('open', '');
     const forecastText = Engine.getForecast(state);
+    const paceRows = createElement('div', { className: 'travel-pace', dataset: { testid: 'travel-pace' } }, [
+      createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'),
+      createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration'),
+      createTravelEffect(state),
+    ]);
+    // Wide screens keep the caravan always in view on the left page; phones open it as a sheet.
+    const ledger = isPhone ? null : createElement('div', { className: 'travel-ledger' }, [
+      paceRows,
+      createElement('section', { className: 'panel', dataset: { testid: 'ledger-party' } }, [createElement('h2', { className: 'panel__title', text: 'Party, exact health' }), createPartyCompact(state, true)]),
+      createElement('section', { className: 'panel', dataset: { testid: 'ledger-supplies' } }, [createElement('h2', { className: 'panel__title', text: 'Supplies, exact' }), createCaravanSnapshot(state)]),
+    ]);
     replaceScreen([
       createHud(state),
       createElement('main', { className: 'travel-main' }, [
@@ -1402,27 +1586,18 @@
         marginNoteId ? createMarginNote(marginNoteId) : null,
         createElement('div', { className: 'travel-scene' }, [
           createMarginCard(state),
-          canvas,
-          createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
+          isPausedPhone ? null : canvas,
+          createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} → ${World.findNode(edge.to).name} · ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
+          createElement('p', { className: 'forecast travel-weather', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
           createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
-          createElement('p', { className: 'forecast', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
-          createPartyStrip(state),
-          createElement('div', { className: 'button-row' }, [
-            createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),
-            createButton({ label: 'Rest here', action: 'restDay', testId: 'travel-rest' }),
-            createButton({ label: copy('map.button'), action: 'openMap', testId: 'travel-map', variant: 'quiet' }),
-          ]),
-          state.isPaused ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Tap Resume to continue.' }) : null,
-          state.vignette ? createElement('p', { className: 'vignette', dataset: { testid: 'vignette' }, text: state.vignette }) : null,
-          createTodayBlock(state),
-          createButton({ label: 'Full log', action: 'openLog', testId: 'log-full', variant: 'quiet' }),
+          state.isPaused && !isPhone ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Press Resume to continue.' }) : null,
+          isPausedPhone ? createPausedPanel(state) : createTodayBlock(state),
+          isPhone ? paceRows : null,
+          state.vignette && !isPausedPhone ? createElement('p', { className: 'vignette', dataset: { testid: 'vignette' }, text: state.vignette }) : null,
         ]),
-        createElement('div', { className: 'travel-ledger' }, [
-          createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'),
-          createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration'),
-          caravanPanel,
-        ]),
+        ledger,
       ]),
+      createRoadBar(state),
     ], 'road');
   }
 
@@ -1436,15 +1611,22 @@
   function showProvisionScreen(skin) {
     const canvas = createSceneCanvas('hunt-field', `${SKIN_TEXT[skin].title}. ${SKIN_TEXT[skin].hint} Arrow keys move the cursor; Space or Enter acts.`);
     canvas.setAttribute('tabindex', '0');
-    const status = createElement('p', { className: 'forecast', role: 'status', 'aria-live': 'polite', dataset: { testid: 'hunt-status' } });
+    const status = createElement('p', { className: 'forecast hunt-status', role: 'status', 'aria-live': 'polite', dataset: { testid: 'hunt-status' } });
+    const state = context.provisionState || null;
+    const edge = state ? (State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null) : null;
+    const forecast = edge ? Engine.computeSupplyForecast(state, edge) : null;
     replaceScreen([createElement('main', { className: 'hunt-main' }, [
-      createElement('h1', { className: 'screen-title', text: SKIN_TEXT[skin].title }),
-      createElement('p', { className: 'paragraph', text: `${SKIN_TEXT[skin].hint} Arrow keys move the cursor; Space or Enter acts.` }),
-      canvas, status,
+      // Only the two numbers that matter while hunting: how long the food and the feed will last.
+      forecast ? createElement('p', { className: 'hunt-ribbon', dataset: { testid: 'hunt-ribbon' }, text: `Rations ${forecast.rationDays} d · Feeds ${forecast.feedDays} d` }) : null,
+      createElement('h1', { className: 'screen-title hunt-title', text: SKIN_TEXT[skin].title }),
+      createElement('p', { className: 'paragraph hunt-hint', text: `${SKIN_TEXT[skin].hint} Arrow keys move the cursor; Space or Enter acts.` }),
+      status, canvas,
+      createElement('div', { className: 'hunt-actions' }, [createButton({ label: 'Stop here and keep what I have', action: 'stopProvision', testId: 'hunt-stop', variant: 'primary' })]),
     ])], 'provision');
     canvas.focus({ preventScroll: true });
     return { canvas, update(text) { status.textContent = text; } };
   }
+
 
   // ---------------------------------------------------------------------------
   // End screen (GDD 9.10)
@@ -1644,6 +1826,8 @@
     if (element) element.textContent = text;
   }
 
+  /** The state the hunt screen reads for its two-number ribbon (the screen itself never changes state). */
+  const setProvisionContext = (state) => { context.provisionState = state; };
   const toggleHudExpanded = () => { isHudExpanded = !isHudExpanded; };
   const setStopTab = (tabId) => { activeStopTab = ['town', 'caravan', 'learn'].includes(tabId) ? tabId : 'town'; };
 
@@ -1679,6 +1863,7 @@
   namespace.UI = Object.freeze({
     initialize, showTitle, showStart, readStartName, showSceneImage, getImageUrl, getImageAlt, openLetter, openChapterEnd, closeChapterEnd, isChapterEndOpen, openLoadBlocked, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
+    openSectionSheet, refreshSectionSheet, isSectionSheetOpen, setProvisionContext,
     openCodex, openLog, openReport, refreshReport, isReportOpen, setReportNotice, showRatingThanks, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
     getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,
   });

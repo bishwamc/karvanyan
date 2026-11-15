@@ -33,7 +33,7 @@ def main(stop_id, expected_title):
         page.click('[data-testid="action-setout"]')
 
         started = time.time(); sheet_text = None
-        dialog_buttons = ('#modal-root button[data-testid^="modal-choice"], #modal-root button[data-testid^="moment-choice"], '
+        dialog_buttons = ('#modal-root button[data-testid^="modal-choice"]:not([disabled]):not([aria-disabled="true"]), #modal-root button[data-testid^="moment-choice"]:not([disabled]), '
                           '#modal-root button[data-testid="modal-continue"], #modal-root button[data-testid="moment-continue"], '
                           '#modal-root button[data-testid="report-close"]')
         while time.time() - started < 300:

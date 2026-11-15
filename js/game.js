@@ -318,7 +318,9 @@
     UI().showRoad(gameState, { isCaravanPanelOpen, marginNoteId: marginNoteId || null });
     const canvas = UI().getRoadCanvas();
     const screen = document.getElementById('screen');
-    if (!screen.contains(canvas)) screen.querySelector('.travel-main').prepend(canvas);
+    // The paused phone screen leaves the picture out on purpose (it shows exact numbers instead).
+    const leavesPictureOut = gameState.isPaused && screen.querySelector('[data-testid="paused-panel"]');
+    if (!leavesPictureOut && !screen.contains(canvas)) screen.querySelector('.travel-main').prepend(canvas);
     UI().renderRoadFrame(gameState, performance.now() / 1000, true);
   }
 
@@ -429,6 +431,7 @@
     }
     // An open decision sheet always shows the latest numbers (after Treat, a pace change, a purchase).
     if (UI().isReportOpen()) UI().refreshReport(gameState);
+    if (UI().isSectionSheetOpen()) UI().refreshSectionSheet(gameState);
     // Last, so the chapter end and the journey map wait behind any report or dialog that this move opened.
     offerChapterEnd();
     offerDeferredMap();
@@ -485,6 +488,7 @@
     UI().closePending();
     const mods = State.getModifiers(gameState);
     const timeFactor = (settings.hasAssists ? Config.PROVISION.ASSIST_TIME_FACTOR : 1) * (['rain', 'monsoon'].includes(gameState.weather.today) ? 0.8 : 1);
+    UI().setProvisionContext(gameState);
     const screen = UI().showProvisionScreen(skin);
     provisionSession = startProvisionSession({
       canvas: screen.canvas, skin, durationSeconds: Config.PROVISION.DURATION_SECONDS * timeFactor,
@@ -708,6 +712,14 @@
     fixReadiness(argument) {
       const readiness = Engine.getLegReadiness(gameState);
       if (!readiness) return;
+      if (argument === 'all') {
+        // Food and feed only: selling cargo to cover money is always a separate, deliberate tap.
+        ['food', 'feed'].forEach((key) => {
+          const current = Engine.getLegReadiness(gameState);
+          if (current && !current[key].isOk && !UI().hasOpenModal()) ACTIONS.fixReadiness(key);
+        });
+        return;
+      }
       if (argument === 'food' || argument === 'feed') {
         const key = argument === 'food' ? 'food' : 'feed';
         let state = gameState;
@@ -765,6 +777,13 @@
     confirmResetSave() { UI().confirmAction({ title: 'Reset saved game?', message: 'This deletes your saved run on this device. Graves and scores are kept.', confirmLabel: 'Delete my save', action: 'resetSave' }); },
     resetSave() { State.clearSavedGame(); UI().closeAllModals(); if (!gameState) showTitleScreen(); },
 
+    /** Opens one of the sheets (town, caravan, rest, learn on a phone's stop screen; caravan and supplies on the road). */
+    openSection(argument) { UI().openSectionSheet(argument, gameState); },
+    /** The window crossed the phone/wide line: draw the stop or road screen again in the other layout. */
+    relayout() { if (gameState && !provisionSession && gameState.phase !== 'ended' && !gameState.pending) renderCurrent(); },
+    /** Ends the hunt, fishing or foraging now and keeps what was caught so far. */
+    stopProvision() { if (provisionSession) provisionSession.finishNow(); },
+
     // HUD and tabs
     toggleHud() { UI().toggleHudExpanded(); renderCurrent(); },
     selectTab(argument) { UI().setStopTab(argument); UI().showStop(gameState); },
@@ -803,6 +822,7 @@
     setRestDays(argument) { UI().setRestDays(Number(argument)); renderCurrent(); },
     /** Rests up to N days in a city. Stops early if someone falls ill or dies, or an event needs a decision. */
     restMany(argument) {
+      if (UI().isSectionSheetOpen()) UI().closeTopSheet();
       const days = Math.max(1, Math.min(10, Math.floor(Number(argument)) || 1));
       let state = gameState;
       for (let day = 0; day < days; day += 1) {
@@ -867,6 +887,27 @@
 
   // ---- boot ------------------------------------------------------------------
 
+  /**
+   * Road shortcuts: Space pause, R rest a day, C caravan, S supplies, L log, M map.
+   * They fire only when nothing else wants the key: not on a focused button, link or field, not with a sheet open,
+   * and never on the stop screen (so Space can never set out by accident).
+   */
+  const ROAD_SHORTCUTS = Object.freeze({ ' ': 'togglePause', r: 'restDay', c: 'openCaravanSheet', s: 'openSuppliesSheet', l: 'openLog', m: 'openMap' });
+  function onRoadShortcut(event) {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!gameState || gameState.phase !== 'road' || provisionSession || gameState.pending || UI().hasOpenModal()) return;
+    const screen = document.getElementById('screen');
+    if (!screen || screen.dataset.screen !== 'road') return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target && target.closest('input, textarea, select, button, a, summary, [role="tab"], [tabindex]:not([tabindex="-1"])')) return;
+    const action = ROAD_SHORTCUTS[event.key.length === 1 ? event.key.toLowerCase() : event.key];
+    if (!action) return;
+    event.preventDefault();
+    if (action === 'openCaravanSheet') dispatchAction('openSection', 'roadCaravan');
+    else if (action === 'openSuppliesSheet') dispatchAction('openSection', 'supplies');
+    else dispatchAction(action);
+  }
+
   function pauseAndSaveWhenHidden() {
     if (!document.hidden || !gameState) return;
     if (gameState.phase === 'road' && !gameState.isPaused && !gameState.pending) commitState(State.patchState(gameState, { isPaused: true }), { shouldSave: false });
@@ -880,6 +921,7 @@
     UI().applySettings(settings);
     UI().initialize({ rootElement, onAction: dispatchAction });
     document.addEventListener('visibilitychange', pauseAndSaveWhenHidden);
+    document.addEventListener('keydown', onRoadShortcut);
     window.addEventListener('pagehide', () => {
       saveNow();
       // v4 F6: which chapter and screen people quit on. sendBeacon survives the page closing.

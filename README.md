@@ -12,7 +12,11 @@ Plain HTML, CSS and JavaScript. **No build step, no dependencies, no external as
 4. **Rest days** let the weak and sick recover and offer the **provisioning minigame** (hunt, fish or forage, picked by region; about 20 s; cannot be skipped once started, but you may just rest).
 5. Rivers, tolls, dilemmas and subplot beats appear as choices with their costs shown. Reaching Dhaka alive and selling your cargo there ends the game.
 
-## Images (v4.1)
+## Release 4.1.0
+
+UI overhaul phases 1 and 2: margin card on the road, layout fixes for phones and wide screens. See `CHANGES-4.1.0.md`.
+
+## Images (planned, not in 4.1.0)
 
 The game ships with its canvas pictures. Drop finished `.webp` files into `img/` using the names in `img/README.md` and they replace the canvas pictures one by one. A missing file falls back silently.
 
