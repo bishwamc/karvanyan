@@ -1,5 +1,5 @@
 """
-Browser test: layout budgets for the Stop and Road screens (v4.0.1 CSS hotfix).
+Browser test: layout budgets for the Stop and Road screens (v4.0.1 CSS hotfix, v4.0.2 margin card).
 Needs Python Playwright and the game served over HTTP.
 
 Usage (from the project folder):
@@ -44,6 +44,22 @@ CONTRAST = """() => {
 }"""
 
 
+ROAD_PROBE = """() => {
+  const card = document.querySelector('[data-testid="margin-card"]');
+  if (!card) return null;
+  const box = card.getBoundingClientRect();
+  const row = (id) => { const r = document.querySelector('[data-testid="' + id + '"]'); if (!r) return null;
+    const track = r.querySelector('.margin__track').getBoundingClientRect(); const tick = r.querySelector('.margin__tick').getBoundingClientRect(); const fill = r.querySelector('.margin__fill').getBoundingClientRect();
+    return { status: r.dataset.status, text: r.innerText.replace(/\\s+/g, ' ').trim(), aria: r.getAttribute('aria-label'), tickPos: (tick.left - track.left) / track.width, fillPos: fill.width / track.width }; };
+  return { top: box.top, bottom: box.bottom, height: box.height, food: row('margin-food'), feed: row('margin-feed'), care: (document.querySelector('[data-testid="hud-party"]') || {}).innerText || '' };
+}"""
+
+
+def to_road(page):
+    # Measure straight away, at the page's own scroll position: clicking Pause would scroll the page first.
+    page.click('[data-testid="action-setout"]'); page.wait_for_timeout(500)
+
+
 def main():
     save = subprocess.run(['node', 'tools/make-test-save.mjs', 'jalalabad'], cwd=ROOT, capture_output=True, text=True, check=True).stdout
     failures, errors = [], []
@@ -69,7 +85,32 @@ def main():
                 ratio = page.evaluate(CONTRAST)
                 print(f'          sealed letter contrast in night theme: {ratio:.2f}:1')
                 if ratio < 4.5: failures.append(f'{size}: sealed letter contrast {ratio:.2f}:1 in night theme (need 4.5)')
+            # Road screen: the margin card is the first block under the top bar, on the first screen.
+            to_road(page)
+            r = page.evaluate(ROAD_PROBE)
+            if r is None: failures.append(f'{size}: no margin card on the road screen')
+            else:
+                if r['food']['status'] != 'ok' or r['feed']['status'] != 'ok': failures.append(f'{size}: well-stocked road should read ok, got {r["food"]["status"]}/{r["feed"]["status"]}')
+                for key in ('food', 'feed'):
+                    if not (0 <= r[key]['tickPos'] <= 1.01 and 0 <= r[key]['fillPos'] <= 1.01): failures.append(f'{size}: {key} bar maths out of range {r[key]}')
+                    if 'need' not in r[key]['text'] or ('Enough' not in r[key]['text']): failures.append(f'{size}: {key} row text missing numbers or verdict: {r[key]["text"]}')
+                if r['top'] < 0 or r['bottom'] > h: failures.append(f'{size}: margin card is not fully on the first screen (top {r["top"]:.0f}, bottom {r["bottom"]:.0f} > {h})')
+                print(f'          road margin card: top {r["top"]:.0f} px, {r["height"]:.0f} px tall; food {r["food"]["text"]}')
             page.close()
+        # A thin supply must read "Not enough" with its mark, and the HUD must flag the sick.
+        thin = json.loads(save); thin_text = json.dumps(thin)
+        page = browser.new_page(viewport={'width': 390, 'height': 844}); page.on('pageerror', lambda e: errors.append(str(e)))
+        page.goto(URL, wait_until='load'); page.wait_for_timeout(400)
+        page.evaluate("(json) => { const s = JSON.parse(json); s.supplies.rations = 6; s.party[0].illness = Object.keys(Karvanyan.Config.ILLNESSES)[0]; Karvanyan.State.saveGame(s, 4242); }", save)
+        page.reload(wait_until='load'); page.wait_for_timeout(400)
+        page.click('[data-testid="title-continue"]'); page.wait_for_timeout(500); to_road(page)
+        r = page.evaluate(ROAD_PROBE)
+        if r is None or r['food']['status'] not in ('short', 'tight'): failures.append(f'thin supply: expected short/tight, got {None if r is None else r["food"]["status"]}')
+        else: print(f'          thin supply reads: {r["food"]["text"]}')
+        if r is not None and r['food']['status'] == 'short' and '!!' not in r['food']['text']: failures.append('thin supply: "short" row has no mark')
+        if r is not None and 'needs care' not in r['care']: failures.append(f'a sick member is not flagged in the top bar: {r["care"]!r}')
+        elif r is not None: print(f'          top bar party chip: {r["care"]!r}'.replace(chr(10), ' '))
+        page.close()
         browser.close()
     failures += [f'page error: {e}' for e in errors]
     if failures:
