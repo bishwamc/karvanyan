@@ -694,11 +694,13 @@
     // Days of supply left come from the same function as the action-bar forecast, so they never disagree.
     const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
     const forecast = edge ? Engine.computeSupplyForecast(state, edge) : null;
+    // Sick or weak people, so a healthy-looking 4/4 cannot hide a fever.
+    const needCare = state.party.filter((member) => member.isAlive && (Boolean(member.illness) || member.hp < getWeakHp())).length;
     const essentials = createElement('div', { className: 'hud__row' }, [
       createChip('Rupees', String(Math.floor(state.money)), 'hud-money'),
       createChip('Rations', String(Math.floor(state.supplies.rations)), 'hud-food', forecast ? `\u2248 ${forecast.rationDays} d` : null, forecast ? forecast.rationDays < forecast.legDays : false),
       createChip('Feeds', String(Math.floor(state.supplies.feeds)), 'hud-fodder', forecast ? `\u2248 ${forecast.feedDays} d` : null, forecast ? forecast.feedDays < forecast.legDays : false),
-      createChip('Party', `${State.getLivingCount(state)}/${state.party.length}`, 'hud-party'),
+      createChip('Party', `${State.getLivingCount(state)}/${state.party.length}`, 'hud-party', needCare > 0 ? `${needCare} ${needCare === 1 ? 'needs' : 'need'} care` : null, needCare > 0),
     ]);
     const children = [essentials];
     if (isHudExpanded) {
@@ -748,6 +750,52 @@
   const getWeakHp = () => Config.TUNING.WEAK_HP;
 
   /** One short line per member, always visible on the road: name, exact health, illness. */
+  // ---------------------------------------------------------------------------
+  // Margin card (v4.0.2): days in hand against days the next stop needs
+  // ---------------------------------------------------------------------------
+
+  /** Plain words and a mark for each status, so colour is never the only signal. */
+  const MARGIN_STATUS = Object.freeze({
+    ok: { mark: '\u2713', word: 'Enough' },
+    tight: { mark: '!', word: 'Just enough' },
+    short: { mark: '!!', word: 'Not enough' },
+  });
+
+  /**
+   * One row: label and verdict on top, a bar below. The bar fills with the days you have; the tick marks the days
+   * the trip needs. The scale is the larger of the two (with room past the tick), so a short supply is visibly short.
+   */
+  function createMarginRow(labelText, testId, haveDays, needDays, status) {
+    const verdict = MARGIN_STATUS[status];
+    const scale = Math.max(haveDays, needDays * 1.5, 1);
+    const fill = createElement('div', { className: `margin__fill margin__fill--${status}` });
+    fill.style.setProperty('width', `${Math.min(100, (haveDays / scale) * 100)}%`);
+    const tick = createElement('div', { className: 'margin__tick' });
+    tick.style.setProperty('left', `${Math.min(100, (needDays / scale) * 100)}%`);
+    const dayWord = (count) => (count === 1 ? 'day' : 'days');
+    const summary = `${labelText}: ${haveDays} ${dayWord(haveDays)} in hand, the trip needs ${needDays}. ${verdict.word}.`;
+    return createElement('div', { className: `margin__row margin__row--${status}`, role: 'img', 'aria-label': summary, dataset: { testid: testId, status } }, [
+      createElement('div', { className: 'margin__line', 'aria-hidden': 'true' }, [
+        createElement('span', { className: 'margin__label', text: labelText }),
+        createElement('span', { className: 'margin__numbers', text: `${haveDays} d, need ${needDays}` }),
+        createElement('span', { className: 'margin__verdict', text: `${verdict.mark} ${verdict.word}` }),
+      ]),
+      createElement('div', { className: 'margin__track', 'aria-hidden': 'true' }, [fill, tick]),
+    ]);
+  }
+
+  /** @returns {HTMLElement|null} null at the end of the road, where there is no next stop to be ready for */
+  function createMarginCard(state) {
+    const margin = Engine.computeMargin(state);
+    if (!margin) return null;
+    const dayWord = (count) => (count === 1 ? 'day' : 'days');
+    return createElement('section', { className: 'margin', 'aria-label': 'Supplies against the road ahead', dataset: { testid: 'margin-card' } }, [
+      createElement('h2', { className: 'margin__title', text: `${margin.destination} is about ${margin.legDays} ${dayWord(margin.legDays)} away` }),
+      createMarginRow('Rations', 'margin-food', margin.food.haveDays, margin.needDays, margin.food.status),
+      createMarginRow('Feeds', 'margin-feed', margin.feed.haveDays, margin.needDays, margin.feed.status),
+    ]);
+  }
+
   function createPartyStrip(state) {
     const items = state.party.map((member) => {
       const isWeak = member.isAlive && member.hp < getWeakHp();
@@ -1339,7 +1387,6 @@
   function showRoad(state, view) {
     const edge = State.getEdge(state);
     const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
-    const forecast = createForecastLine(state, edge);
     const canvas = getRoadCanvas();
     const caravanPanel = createElement('details', { className: 'caravan-panel', dataset: { testid: 'caravan-details' } }, [
       createElement('summary', { text: 'Caravan: party, animals and supplies' }),
@@ -1354,11 +1401,11 @@
         createRouteStrip(state),
         marginNoteId ? createMarginNote(marginNoteId) : null,
         createElement('div', { className: 'travel-scene' }, [
+          createMarginCard(state),
           canvas,
           createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
           createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
           createElement('p', { className: 'forecast', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
-          createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }),
           createPartyStrip(state),
           createElement('div', { className: 'button-row' }, [
             createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary' }),

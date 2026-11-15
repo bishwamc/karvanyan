@@ -188,6 +188,30 @@
   }
 
   /**
+   * The "margin" (v4.0.2): for food and feed, days in hand against days the next stop needs.
+   * Same maths as getLegReadiness (leg days + READINESS_MARGIN_DAYS, no grazing), so the road screen and the
+   * stop screen can never disagree. Pure: reads the state, changes nothing.
+   *   'ok'    = covers the trip and the spare days
+   *   'tight' = covers the trip but not the spare days
+   *   'short' = will run out before the next stop
+   * On the road it uses the kos still to go, because estimateLegDays does.
+   * @returns {{destination:string, legDays:number, needDays:number, isOnRoad:boolean,
+   *            food:{haveDays:number, status:string}, feed:{haveDays:number, status:string}}|null} null at Dhaka (no road ahead)
+   */
+  function computeMargin(state) {
+    const edge = State.getEdge(state) || World.getOutgoingEdges(state.nodeId)[0] || null;
+    if (!edge) return null;
+    const forecast = computeSupplyForecast(state, edge);
+    const needDays = forecast.legDays + TUNING.READINESS_MARGIN_DAYS;
+    const statusFor = (haveDays) => (haveDays >= needDays ? 'ok' : (haveDays >= forecast.legDays ? 'tight' : 'short'));
+    return {
+      destination: forecast.destination, legDays: forecast.legDays, needDays, isOnRoad: state.edgeId === edge.id,
+      food: { haveDays: forecast.rationDays, status: statusFor(forecast.rationDays) },
+      feed: { haveDays: forecast.feedDays, status: statusFor(forecast.feedDays) },
+    };
+  }
+
+  /**
    * What a player can do when a purchase is blocked by load: sell two lots of cargo, or buy another animal.
    * @returns {Array<{id:'sellLots'|'buyDonkey', label:string}>}
    */
@@ -1121,7 +1145,7 @@
   namespace.Engine = Object.freeze({
     drawWeatherFor, computeWeatherChain, getForecast, getRiverLevel, computeKosToday, estimateLegDays, computeSupplyForecast,
     getRegionBriefing, addRumours, buySupply, buyAnimal, getAnimalPrice, getHirePrice, hireService,
-    getOverload, getLegBrief, getLegReadiness, getLoadRemedies, applyLoadRemedy, jettison, autoJettison, countJettisonItem, JETTISON_ORDER, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
+    getOverload, getLegBrief, getLegReadiness, computeMargin, getLoadRemedies, applyLoadRemedy, jettison, autoJettison, countJettisonItem, JETTISON_ORDER, beginLeg, advanceDay, continueDay, chooseNight, presentNext,
     pickSkin, restDay, estimateRestCost, detectAlerts, getNewLogEntries, getDayHoldMilliseconds, getNextSupplyLevel, getSupplyBand, applySupplyWarnings, resolveProvision, passCityDays, estimateStayCost, finishAtDhaka, isSaraiAvailable, hasHire, beginDay,
   });
 })(window.Karvanyan);
