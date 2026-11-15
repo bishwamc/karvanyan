@@ -562,3 +562,54 @@ a.button { text-decoration: none; }
 .coach-line { font-style: italic; color: var(--color-text-muted); }
 .scene-image { display: block; width: 100%; }
 .scene-image__picture { display: block; width: 100%; height: auto; }
+
+/* ==========================================================================
+   v4.0.1 hotfix: CSS only, no change to markup or behaviour.
+   Everything here overrides rules above, so to undo it, delete this block.
+   Do not add `:root {` or a dark-mode media query here: tools/contrast.mjs reads the FIRST ones above.
+   ========================================================================== */
+
+/* ---------- Viewport: use the visible height on phones, stop pull-to-refresh and scroll chaining ---------- */
+body { min-height: 100vh; min-height: 100dvh; }
+html, body { overscroll-behavior-y: contain; }
+.modal { overscroll-behavior: contain; }
+.trail-log--full { max-height: 50vh; max-height: 50dvh; overscroll-behavior: contain; }
+
+/* ---------- Action bar: keep Set out, Stay a day and Map on ONE row (was wrapping to 2 rows, 153 px tall) ---------- */
+.action-bar__buttons { flex-wrap: nowrap; }
+.action-bar__buttons .button { padding-left: var(--space-3); padding-right: var(--space-3); }
+.action-bar__buttons .button--primary { flex: 1 1 0; min-width: 0; }
+.action-bar__buttons .button:not(.button--primary) { flex: 0 0 auto; }
+.action-bar__buttons .button--seal { padding-right: 2.5rem; }
+.action-bar__buttons .button--seal::after { right: 0.5rem; }
+
+/* ---------- Readiness card: the text no longer drops away from its tick ---------- */
+.readiness__mark { flex: none; }
+.readiness__text { flex: 1 1 12rem; min-width: 0; }
+.readiness__fix { flex: none; }
+
+/* ---------- Meters: the number sits on its own paper chip so it can never be lost on the bar ---------- */
+.meter__text { top: 50%; right: var(--space-1); transform: translateY(-50%); line-height: 1.1; padding: 0 var(--space-1); background: var(--color-surface); border: 1px solid var(--color-border); text-shadow: none; }
+
+/* ---------- Warnings carry a mark as well as a colour (WCAG 1.4.1) ---------- */
+.forecast--warning::before, .chip__sub--warning::before, .snapshot__value--warning::before,
+.party-strip__item--warning::before, .hud__date--warning::before, .report-list__item--warning::before { content: "! "; }
+.report-list__item--danger::before { content: "!! "; }
+
+/* ---------- Sealed letter: fixed ink on its fixed pale paper (it was cream on cream in the night theme) ---------- */
+.letter { color: #2a2118; }
+
+/* ---------- Wide screens: the sticky picture clears the taller top bar ---------- */
+@media (min-width: 900px) {
+  .stop-aside { top: 8.5rem; }
+}
+
+/* ---------- Short landscape phones (e.g. 667 x 375): stop pinning two bars over a 375 px screen ---------- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hud { position: static; }
+  .scene-canvas { width: auto; max-width: 100%; max-height: 45vh; margin: var(--space-2) auto; }
+  .action-bar { display: flex; align-items: center; gap: var(--space-3); padding-top: var(--space-1); padding-bottom: calc(var(--space-1) + env(safe-area-inset-bottom)); }
+  .action-bar .forecast { flex: 1 1 35%; margin: 0; }
+  .action-bar__buttons { flex: 1 1 65%; }
+  .modal { max-height: 92vh; max-height: 92dvh; }
+}
