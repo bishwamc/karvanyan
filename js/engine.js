@@ -548,7 +548,26 @@
   }
 
   /** At most one road event per day (GDD 7.7): dilemma, checkpoint, or a small encounter. */
+  /**
+   * Pacing wrapper (4.1.2). The first days of the road are quiet, and after any road decision the caravan
+   * gets a few days to breathe. The scripted day-3 crisis is the only thing allowed inside the quiet start.
+   */
   function rollRoadEvent(state, random) {
+    const travelDay = state.stats.travelDays;
+    if (shouldFireLameCamelCrisis(state)) return markRoadEventDay(rollRoadEventUnpaced(state, random), state);
+    if (travelDay < TUNING.EVENT_GRACE_TRAVEL_DAYS) return state;
+    const lastDay = state.flags.lastRoadEventDay;
+    if (typeof lastDay === 'number' && travelDay - lastDay < TUNING.EVENT_MIN_GAP_DAYS) return state;
+    return markRoadEventDay(rollRoadEventUnpaced(state, random), state);
+  }
+
+  /** Remembers the travel day of a road decision so the next one waits EVENT_MIN_GAP_DAYS. */
+  function markRoadEventDay(result, before) {
+    if (!result.pending || result.pending === before.pending) return result;
+    return State.setFlag(result, 'lastRoadEventDay', result.stats.travelDays);
+  }
+
+  function rollRoadEventUnpaced(state, random) {
     // The scripted first stake of the game: always on the third travel day of the first leg (or the next one) (v4 N4).
     if (shouldFireLameCamelCrisis(state)) return { ...state, pending: { kind: 'storylet', id: namespace.Story.CRISIS_ID } };
     const region = State.getRegionOfState(state);

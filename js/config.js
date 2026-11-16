@@ -10,7 +10,7 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '4.1.0';
+  const GAME_VERSION = '4.1.2';
   const SAVE_SCHEMA_VERSION = 3;
   const MIN_LOADABLE_SCHEMA_VERSION = 2;
 
@@ -156,7 +156,9 @@
 
   const TUNING = Object.freeze({
     // Day tempo (3.0): quiet days run at a fixed pace; a day that leaves readable news stays on screen longer.
-    QUIET_DAY_MILLISECONDS: 1800, READING_MILLISECONDS_PER_WORD: 250, MAX_DAY_MILLISECONDS: 6000,
+    QUIET_DAY_MILLISECONDS: 3500, READING_MILLISECONDS_PER_WORD: 330, MAX_DAY_MILLISECONDS: 9000,
+    // 4.1.2 pacing: no random road decisions in the first travel days, and at least this many days between decisions.
+    EVENT_GRACE_TRAVEL_DAYS: 5, EVENT_MIN_GAP_DAYS: 3,
     // Warnings (3.0): supplies warn when they first fall below enough for the leg, then 2 days, then 0.
     // A warning re-arms only after supplies recover this many days above its level.
     SUPPLY_WARNING_SOON_DAYS: 2, SUPPLY_WARNING_REARM_DAYS: 2, CARGO_CONDITION_ALERTS: Object.freeze([0.9, 0.75, 0.5]),

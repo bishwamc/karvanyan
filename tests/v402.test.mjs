@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { loadGame } from '../tools/simulate.mjs';
 
-const { State, Engine, Config, World } = loadGame();
+const { State, Engine, Events, Story, Config, World } = loadGame();
 const setup = (extra) => ({ archetypeId: 'persian', leaderName: 'Hadi', cargoShare: 0.4, candidateIds: ['hakim_jafar', 'sher_dil', 'bibi_gulnar'], rationPacks: 8, feedPacks: 8, startMonthIndex: 9, subplotId: 'book', worldSeed: 77, scout: true, ...extra });
 const newGame = (extra) => State.createNewGame(setup(extra));
 const quiet = { saraiPolicy: 'never' };
@@ -94,10 +94,39 @@ test('4.1.0: a save written by build 4.0.0 still loads (the build label is infor
   assert.equal(parsed.state.leaderName, 'Hadi');
 });
 
-test('4.1.0: the version label is 4.1.0 and the cache-busting numbers in index.html match it', () => {
+test('4.1.0: the version label is 4.1.2 and the cache-busting numbers in index.html match it', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const versions = [...html.matchAll(/\?v=([0-9.]+)/g)].map((match) => match[1]);
-  assert.equal(Config.GAME_VERSION, '4.1.0');
+  assert.equal(Config.GAME_VERSION, '4.1.2');
   assert.ok(versions.length >= 15, `expected every script and stylesheet to carry a version, found ${versions.length}`);
   assert.ok(versions.every((version) => version === Config.GAME_VERSION), `mixed versions: ${[...new Set(versions)].join(', ')}`);
+});
+
+test('4.1.2 pacing: only the day-3 crisis before the grace days, and road decisions are spaced', () => {
+  // The promised pacing, written out so that loosening the tuning numbers makes this test fail.
+  const grace = 5; const gap = 3;
+  assert.ok(Config.TUNING.EVENT_GRACE_TRAVEL_DAYS >= grace && Config.TUNING.EVENT_MIN_GAP_DAYS >= gap);
+  const crisisId = Story.CRISIS_ID;
+  let early = 0; let spacedOk = true;
+  for (let seed = 1; seed <= 60; seed += 1) {
+    let state = Engine.beginLeg(newGame({ worldSeed: seed * 7919 }));
+    const random = State.createRandomSource(seed);
+    let lastDecisionDay = null;
+    for (let step = 0; step < 30 && state.phase !== 'ended' && state.phase !== 'stop'; step += 1) {
+      state = Engine.advanceDay(state, random, quiet);
+      let guard = 0;
+      while (state.pending && state.phase === 'road' && guard++ < 5) {
+        const view = Events.getView(state);
+        const travelDay = state.stats.travelDays;
+        const isCrisis = state.pending.id === crisisId;
+        const isRoadRoll = ['storylet', 'checkpoint'].includes(state.pending.kind) && !isCrisis;
+        if (isRoadRoll && travelDay < grace) early += 1;
+        if (isRoadRoll && lastDecisionDay !== null && travelDay - lastDecisionDay < gap) spacedOk = false;
+        if (isRoadRoll || isCrisis) lastDecisionDay = travelDay;
+        state = Events.choose(state, view.choices.find((choice) => !choice.reason).id, random, quiet).state;
+      }
+    }
+  }
+  assert.equal(early, 0, 'random road decisions appeared inside the quiet start');
+  assert.ok(spacedOk, 'two road decisions came closer than EVENT_MIN_GAP_DAYS');
 });

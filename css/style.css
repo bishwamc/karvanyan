@@ -817,3 +817,20 @@ html, body { overscroll-behavior-y: contain; }
   .leg-brief__title { font-size: var(--text-small); margin-bottom: 0; }
   .leg-brief .readiness { margin: 0; }
 }
+
+/* ---------- v4.1.1: on the road the cartoon scene is the picture; the camel tape (route strip drawing) is dropped on every width ---------- */
+.travel-main .route-strip__canvas { display: none; }
+.travel-main .route-strip { min-height: 0; }
+
+/* ---------- v4.1.1: wide road. The cartoon scene is the main picture, top left; the numbers sit beside it. ---------- */
+@media (min-width: 900px) {
+  .travel-main { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: var(--space-2) var(--space-4); }
+  .travel-main > .route-strip { grid-column: 1 / -1; grid-row: 1; }
+  .travel-main > .travel-scene { grid-column: 1; grid-row: 2; }
+  .travel-main > .travel-ledger { grid-column: 2; grid-row: 2; }
+  .travel-main > .coach { grid-column: 1 / -1; grid-row: 3; }
+}
+@media (min-width: 900px) {
+  /* Wide screens: a wider, shorter picture so the whole scene, the weather and the ticker fit above the control bar. */
+  .travel-scene .scene-canvas { aspect-ratio: 5 / 2; width: 100%; height: auto; }
+}
