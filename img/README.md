@@ -19,6 +19,11 @@ munger, bhagalpur, rajmahal, makhsusabad, dhaka.
 Event ids: lame_camel, toll, ferry, sarai_night, ambush, grave.
 Candidate ids: naseer, hakim_jafar, bibi_gulnar, sher_dil, munshi_kishan, gul_zaman.
 
+**4.4.0 – pictures are optional.** The game ships with zero images and is complete without them. Slots that are already
+wired and appear by themselves when a file is dropped in: stop scenes, title hero, event pictures, and party-card
+portraits (shown as a small round face on the road cards; mood follows health: content / worried / grieving).
+Reserved for later, not wired yet: a road background per chapter (`img/road/road_<chapter>.webp`, 960 x 540).
+
 Priority first (spec section 8): `title_hero`, `letter_paper`, `seal_red`, the five stops kabul, jalalabad, khyber,
 peshawar, attock, `ev_lame_camel`, and the portraits of naseer, hakim_jafar, bibi_gulnar.
 

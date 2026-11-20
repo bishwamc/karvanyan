@@ -31,7 +31,6 @@
   /** @type {{rootElement:HTMLElement, screenElement:HTMLElement, modalRootElement:HTMLElement, onAction:Function}|null} */
   let context = null;
   let isHudExpanded = false;
-  let activeStopTab = 'town';
   let travelCanvasElement = null;
   const modalStack = [];
   /** The open decision sheet, if any: its handle, the news it lists, and the latest state it shows. */
@@ -872,21 +871,6 @@
 
   const isSectionSheetOpen = () => sectionSheet.handle !== null;
 
-  /** The road's pinned control bar: one big primary, three secondary. The map opens from the route strip. */
-  function createRoadBar(state) {
-    return createElement('div', { className: 'action-bar road-bar', dataset: { testid: 'road-bar' } }, [
-      createElement('div', { className: 'action-bar__buttons road-bar__main' }, [
-        createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary', ariaLabel: state.isPaused ? 'Resume travelling' : 'Pause travelling' }),
-      ]),
-      createElement('div', { className: 'action-bar__buttons road-bar__more' }, [
-        createButton({ label: 'Rest a day', action: 'restDay', testId: 'travel-rest' }),
-        createButton({ label: 'Caravan', action: 'openSection', argument: 'roadCaravan', testId: 'travel-caravan' }),
-        createButton({ label: 'Supplies', action: 'openSection', argument: 'supplies', testId: 'travel-supplies' }),
-        createButton({ label: copy('map.button'), action: 'openMap', testId: 'travel-map' }),
-      ]),
-      createElement('p', { className: 'key-hint', text: 'Keys: Space pause · R rest · C caravan · S supplies · L log · M map' }),
-    ]);
-  }
 
   // ---------------------------------------------------------------------------
   // Margin card (v4.0.2): days in hand against days the next stop needs
@@ -922,17 +906,6 @@
     ]);
   }
 
-  /** @returns {HTMLElement|null} null at the end of the road, where there is no next stop to be ready for */
-  function createMarginCard(state) {
-    const margin = Engine.computeMargin(state);
-    if (!margin) return null;
-    const dayWord = (count) => (count === 1 ? 'day' : 'days');
-    return createElement('section', { className: 'margin', 'aria-label': 'Supplies against the road ahead', dataset: { testid: 'margin-card' } }, [
-      createElement('h2', { className: 'margin__title', text: `${margin.destination} is about ${margin.legDays} ${dayWord(margin.legDays)} away` }),
-      createMarginRow('Rations', 'margin-food', margin.food.haveDays, margin.needDays, margin.food.status),
-      createMarginRow('Feeds', 'margin-feed', margin.feed.haveDays, margin.needDays, margin.feed.status),
-    ]);
-  }
 
   function createPartyStrip(state) {
     const items = state.party.map((member) => {
@@ -1469,135 +1442,252 @@
     ].filter(Boolean);
   }
 
-  /** @param {Object} state @param {{marginNoteId?:string|null}} [view] */
+  /** One big tile on the stop screen: a title, one short line, and a mark plus words when something needs attention. */
+  function createStopTile({ title, sub, hasMark, testId, action, argument, variant }) {
+    return createElement('button', { type: 'button', className: `stop-tile ${variant === 'primary' ? 'stop-tile--primary' : ''} ${hasMark ? 'stop-tile--attention' : ''}`.trim(), dataset: { action, argument, testid: testId, focusKey: testId } }, [
+      createElement('span', { className: 'stop-tile__title', text: title }),
+      sub ? createElement('span', { className: 'stop-tile__sub', text: sub }) : null,
+    ]);
+  }
+
+  /**
+   * The stop screen (4.4.0), the same on every width: the shared status bar, the place with its picture,
+   * what the road ahead needs, and big tiles. Each tile opens a sheet, so the page never grows.
+   * A picture in img/stops/ replaces the drawing when the file exists (showSceneImage).
+   */
   function showStop(state, view) {
     const node = State.getNode(state);
     const edge = World.getOutgoingEdges(state.nodeId)[0] || null;
     const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
     const sceneCanvas = showSceneImage(`stop_${node.id}`, (ctx) => paintStopScene(ctx, node.id), `Illustration of ${node.name}`);
-    const tabs = [['town', 'Town'], ['caravan', 'Caravan'], ['learn', 'Learn']];
-    const tabList = createElement('div', { className: 'tabs', role: 'tablist', 'aria-label': 'Stop sections' }, tabs.map(([tabId, text]) => createElement('button', { type: 'button', className: `tab ${activeStopTab === tabId ? 'tab--active' : ''}`.trim(), role: 'tab', id: `tab-${tabId}`, 'aria-selected': String(activeStopTab === tabId), 'aria-controls': 'tab-panel', text, dataset: { action: 'selectTab', argument: tabId, testid: `tab-${tabId}`, focusKey: `tab-${tabId}` } })));
-    const isPhone = isPhoneLayout();
-    const builders = { town: () => createTownTab(state), caravan: () => createCaravanTab(state, edge), learn: () => createLearnTab(state, edge) };
-    // Wide screens keep the three tabs; phones get one row per section, each opening a sheet, so the page never grows.
-    const tabPanel = isPhone ? null : createElement('div', { className: 'tab-panel', role: 'tabpanel', id: 'tab-panel', 'aria-labelledby': `tab-${activeStopTab}` }, builders[activeStopTab]());
+    const chapterNumber = Story.getChapterNumberForNode(node.id);
+    const chapterTitle = chapterNumber ? `Chapter ${chapterNumber}: ${Story.getChapter(chapterNumber).title}` : '';
     const careCount = state.party.filter((member) => member.isAlive && (Boolean(member.illness) || member.hp < getWeakHp())).length;
+    const readiness = edge ? Engine.getLegReadiness(state) : null;
+    const isShort = Boolean(readiness) && !readiness.isAllReady;
+    const canTrade = node.tier !== 'none';
     const canRest = state.nodeId !== 'khyber';
-    const sectionRows = createElement('div', { className: 'section-rows', dataset: { testid: 'section-rows' } }, [
-      createSectionRow('town', 'Town', node.tier === 'none' ? 'No market here' : 'Sell cargo, buy supplies', 'section-row-town'),
-      createSectionRow('caravan', 'Caravan', careCount > 0 ? `! ${careCount} ${careCount === 1 ? 'needs' : 'need'} care` : 'Party, pace, hire help', 'section-row-caravan'),
-      canRest ? createSectionRow('rest', 'Rest here', 'Heal the sick, for a fee', 'section-row-rest') : null,
-      createSectionRow('learn', 'Learn', 'Rumours, ask around', 'section-row-learn'),
-    ]);
-    const actionBar = createElement('div', { className: 'action-bar' });
-    if (edge) {
-      const forecast = createForecastLine(state, edge);
-      const readiness = Engine.getLegReadiness(state);
-      const stopName = World.findNode(edge.to).name;
-      actionBar.appendChild(createElement('p', { className: `forecast ${forecast.warning ? 'forecast--warning' : ''}`.trim(), role: 'status', dataset: { testid: 'forecast' }, text: forecast.text }));
-      actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [
-        createButton({ label: readiness && !readiness.isAllReady ? copy('setout.risky') : copy('setout.ok', { stopName }), action: 'setOut', testId: 'action-setout', variant: 'primary', className: 'button--seal' }),
-        createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' }),
-        createButton({ label: copy('map.button'), action: 'openMap', testId: 'action-map', variant: 'quiet' }),
-      ]));
-    } else {
-      actionBar.appendChild(createElement('p', { className: 'forecast', text: 'Dhaka is the end of the road. Sell what you will, then finish.' }));
-      actionBar.appendChild(createElement('div', { className: 'action-bar__buttons' }, [createButton({ label: 'Finish the journey', action: 'finishJourney', testId: 'action-finish', variant: 'primary' }), createButton({ label: 'Stay a day', action: 'restDay', testId: 'action-rest' }), createButton({ label: copy('map.button'), action: 'openMap', testId: 'action-map', variant: 'quiet' })]));
-    }
+    const stopName = edge ? World.findNode(edge.to).name : '';
+    const tiles = [
+      createStopTile({ title: 'Trade', sub: !canTrade ? 'No market here' : (isShort ? '! supplies short' : 'Sell cargo, buy supplies'), hasMark: canTrade && isShort, testId: 'section-row-town', action: 'openSection', argument: 'town' }),
+      createStopTile({ title: 'Caravan', sub: careCount > 0 ? `! ${careCount} ${careCount === 1 ? 'needs' : 'need'} care` : 'Party, pace, hire help', hasMark: careCount > 0, testId: 'section-row-caravan', action: 'openSection', argument: 'caravan' }),
+      createStopTile({ title: 'Talk', sub: 'Rumours, ask around', testId: 'section-row-learn', action: 'openSection', argument: 'learn' }),
+      canRest ? createStopTile({ title: 'Rest', sub: 'Heal the sick, for a fee', testId: 'section-row-rest', action: 'openSection', argument: 'rest' }) : null,
+      createStopTile({ title: 'Map', sub: 'The road so far', testId: 'action-map', action: 'openMap' }),
+      createStopTile({ title: 'Stay a day', sub: 'Wait here', testId: 'action-rest', action: 'restDay' }),
+    ].filter(Boolean);
+    const goTile = edge
+      ? createStopTile({ title: isShort ? copy('setout.risky') : copy('setout.ok', { stopName }), sub: isShort ? '! the road ahead is short of supplies' : null, hasMark: isShort, testId: 'action-setout', action: 'setOut', variant: 'primary' })
+      : createStopTile({ title: 'Finish the journey', sub: 'Dhaka is the end of the road', testId: 'action-finish', action: 'finishJourney', variant: 'primary' });
     const letter = Story.getUnopenedLetter(state);
-    replaceScreen([createHud(state), createElement('main', { className: 'stop-main' }, [
-      createRouteStrip(state),
-      createElement('h1', { className: 'screen-title', text: node.name }),
-      letter ? createLetterSeal(letter) : null,
-      marginNoteId ? createMarginNote(marginNoteId) : null,
-      edge ? createLegBrief(state, isPhone) : null,
-      // Two groups so a wide screen can put the picture beside the tabs; on a phone the sections are rows that open sheets.
-      createElement('div', { className: 'stop-grid' }, [
-        createElement('div', { className: 'stop-aside' }, [sceneCanvas]),
-        createElement('div', { className: 'stop-body' }, isPhone ? [sectionRows] : [tabList, tabPanel]),
+    replaceScreen([
+      createStatusBar(state, isPhoneLayout()),
+      createElement('main', { className: 'stop-wide' }, [
+        letter ? createLetterSeal(letter) : null,
+        marginNoteId ? createMarginNote(marginNoteId) : null,
+        createElement('div', { className: 'stop-wide__scene' }, [
+          sceneCanvas,
+          createElement('div', { className: 'stop-wide__name' }, [
+            createElement('h1', { className: 'stop-wide__title', text: node.name }),
+            chapterTitle ? createElement('p', { className: 'stop-wide__chapter', text: chapterTitle }) : null,
+          ]),
+        ]),
+        edge ? createLegBrief(state, true) : null,
+        createElement('div', { className: 'stop-tiles', dataset: { testid: 'section-rows' } }, [...tiles, goTile]),
       ]),
-    ]), actionBar], 'stop');
+    ], 'stop');
   }
 
   // ---------------------------------------------------------------------------
   // Road screen
   // ---------------------------------------------------------------------------
 
-  /**
-   * The ticker (v4.1): the evening ledger's two latest lines, with the full log one tap away.
-   * Fixed to two news lines so the road screen never grows when a busy day arrives.
-   */
-  function createTodayBlock(state) {
-    const todayEntries = state.log.filter((entry) => entry.dayIndex === state.dayIndex && entry.level !== 'routine');
-    const nightLine = [...state.log].reverse().find((entry) => entry.dayIndex === state.dayIndex && entry.level === 'routine' && /^Night in/.test(entry.text));
-    const rationsPerDay = State.getRationsPerDay(state);
-    const daysLeft = rationsPerDay > 0 ? Math.floor(state.supplies.rations / rationsPerDay) : 0;
-    const latest = todayEntries.slice(-2);
-    return createElement('section', { className: 'today', 'aria-label': 'Evening ledger', dataset: { testid: 'today' } }, [
-      createElement('div', { className: 'today__head' }, [
-        createElement('h3', { className: 'today__title', text: `${copy('ledger.title', { date: State.formatDate(state) })}${nightLine ? ` · ${nightLine.text}` : ''}` }),
-        createButton({ label: 'Log', action: 'openLog', testId: 'log-full', variant: 'quiet', className: 'today__log', ariaLabel: 'Open the full trail log' }),
-      ]),
-      createElement('p', { className: 'paragraph today__ate', dataset: { testid: 'ledger-ate' }, text: copy('ledger.ate', { rations: Math.round(rationsPerDay * 10) / 10, days: daysLeft }) }),
-      createElement('ul', { className: 'trail-log', 'aria-live': 'polite' }, latest.length > 0
-        ? latest.map((entry) => createElement('li', { text: entry.text }))
-        : [createElement('li', { className: 'trail-log__quiet', text: copy('ledger.quiet') })]),
+
+
+
+  // ---------------------------------------------------------------------------
+  // Menu (4.4.0): the way to settings, the codex, the log and the title screen from the road and from stops
+  // ---------------------------------------------------------------------------
+
+  function openMenu() {
+    openSheet({
+      title: 'Menu', testId: 'menu-sheet',
+      build(body) {
+        body.appendChild(createElement('div', { className: 'button-column' }, [
+          createButton({ label: 'Settings', action: 'openSettings', testId: 'menu-settings' }),
+          createButton({ label: 'Codex', action: 'openCodex', testId: 'menu-codex' }),
+          createButton({ label: 'Trail log', action: 'openLog', testId: 'menu-log' }),
+          createElement('a', { className: 'button button--secondary', href: Config.FEEDBACK.FORM_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Send feedback (opens a form)', dataset: { action: 'openFeedback', testid: 'menu-feedback' } }),
+          createButton({ label: 'Save and go to the title screen', action: 'saveAndQuit', testId: 'menu-quit', variant: 'primary' }),
+        ]));
+        body.appendChild(createButton({ label: 'Close', action: 'closeSheet', testId: 'menu-close', variant: 'quiet' }));
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wide road screen (v4.2.0): five bands. Status bar, the moving caravan, one news line, controls, party cards.
+  // ---------------------------------------------------------------------------
+
+  /** One status chip: a word, a number, and (for supplies) a mark, so the state never rests on colour alone. */
+  function createStatusChip(text, testId, status, titleText) {
+    return createElement('li', { className: `status-chip ${status ? `status-chip--${status}` : ''}`.trim(), title: titleText || undefined, dataset: { testid: testId } }, [createElement('span', { text })]);
+  }
+
+  /** Band 1: date, weather, the next stop, and the numbers that say whether the caravan will make it. Phones get two short rows. */
+  function createStatusBar(state, isPhone) {
+    const roadEdge = State.getEdge(state);
+    const edge = roadEdge || World.getOutgoingEdges(state.nodeId)[0] || null;
+    const margin = Engine.computeMargin(state);
+    const kosLeft = edge ? Math.max(0, Math.ceil(edge.kos - (roadEdge ? state.kosOnEdge : 0))) : 0;
+    const supplyChip = (label, key, testId) => {
+      if (!margin) return createStatusChip(`${label} ${Math.floor(key === 'food' ? state.supplies.rations : state.supplies.feeds)}`, testId);
+      const part = margin[key];
+      const verdict = MARGIN_STATUS[part.status];
+      // A phone has no room for "need N" on a healthy chip; when supplies are not enough it names the need.
+      const needText = !isPhone || part.status !== 'ok' ? ` \u00b7 need ${margin.needDays}` : '';
+      return createStatusChip(`${label} ${part.haveDays} d${needText} ${verdict.mark}`, testId, part.status, `${label}: ${part.haveDays} days in hand, the trip needs ${margin.needDays}. ${verdict.word}.`);
+    };
+    const nextText = margin ? (isPhone ? `${margin.destination} \u00b7 ${kosLeft} kos` : `Next: ${margin.destination} \u00b7 ${kosLeft} kos`) : 'Journey\u2019s end';
+    const dayText = isPhone ? `${weatherText(state.weather.today)} \u00b7 Day ${state.dayIndex}` : `${State.formatDate(state)} \u00b7 Day ${state.dayIndex}`;
+    const chips = isPhone
+      ? [createStatusChip(dayText, 'status-date'), createStatusChip(nextText, 'status-next'), supplyChip('Food', 'food', 'status-food'), supplyChip('Feed', 'feed', 'status-feed'), createStatusChip(`Meds ${state.supplies.medicine}`, 'status-medicine'), createStatusChip(`Money ${Math.floor(state.money)}`, 'status-money')]
+      : [createStatusChip(dayText, 'status-date'), createStatusChip(weatherText(state.weather.today), 'status-weather'), createStatusChip(nextText, 'status-next'), supplyChip('Food', 'food', 'status-food'), supplyChip('Feed', 'feed', 'status-feed'), createStatusChip(`Medicine ${state.supplies.medicine}`, 'status-medicine'), createStatusChip(`Money ${Math.floor(state.money)}`, 'status-money')];
+    return createElement('header', { className: 'road-status', dataset: { testid: 'road-status' } }, [createElement('ul', { className: 'road-status__list' }, [createElement('li', { className: 'status-menu' }, [createButton({ label: 'Menu', action: 'openMenu', testId: 'menu-button', variant: 'quiet', ariaLabel: 'Open the menu: settings, codex, log, save and leave' })]), ...chips])]);
+  }
+
+  /** Band 3: the latest news, one line at a time. It fades in when it changes; it never scrolls. */
+  function createNewsLine(state) {
+    const latest = [...state.log].reverse().find((entry) => entry.level !== 'routine');
+    const text = latest ? `Day ${latest.dayIndex}: ${latest.text}` : copy('ledger.quiet');
+    return createElement('div', { className: 'news-line', dataset: { testid: 'news-line' } }, [
+      createElement('p', { className: 'news-line__text', role: 'status', 'aria-live': 'polite', text }),
+      createButton({ label: 'Log', action: 'openLog', testId: 'log-full', variant: 'quiet', className: 'news-line__log', ariaLabel: 'Open the full trail log' }),
     ]);
   }
 
-  /** The phone's paused screen: exact health and exact supplies, nothing else competing for the eye. */
-  function createPausedPanel(state) {
+  /** Pace and rations as radio groups (real radios: arrow keys, screen readers), drawn as segments. Arrows give pace a shape cue. */
+  function createPaceGroup(state) {
+    const arrows = { steady: '▸', hard: '▸▸', forced: '▸▸▸' };
+    return createRadioGroup('Pace', Object.values(Config.PACES).map((pace) => ({ id: pace.id, label: `${arrows[pace.id]} ${pace.label}` })), state.pace, 'setPace', 'pace');
+  }
+
+  /** Band 4: rations, pause with pace, then rest and map. Wide screens add Caravan and Supplies here; phones put them with the cards. */
+  function createRoadControls(state, isPhone) {
+    const effect = `${Config.PACES[state.pace].help} ${Config.RATIONS[state.rationLevel].help}`;
+    return createElement('div', { className: 'road-controls', dataset: { testid: 'road-controls' } }, [
+      createElement('div', { className: 'road-controls__rations' }, [createRadioGroup('Rations', Object.values(Config.RATIONS).map((ration) => ({ id: ration.id, label: ration.label })), state.rationLevel, 'setRations', 'ration')]),
+      createElement('div', { className: 'road-controls__pill' }, [
+        createButton({ label: state.isPaused ? 'Resume' : 'Pause', action: 'togglePause', testId: 'travel-pause', variant: 'primary', ariaLabel: state.isPaused ? 'Resume travelling' : 'Pause travelling' }),
+        createPaceGroup(state),
+      ]),
+      createElement('div', { className: 'road-controls__more' }, [
+        createButton({ label: 'Rest a day', action: 'restDay', testId: 'travel-rest' }),
+        isPhone ? null : createButton({ label: 'Caravan', action: 'openSection', argument: 'roadCaravan', testId: 'travel-caravan' }),
+        isPhone ? null : createButton({ label: 'Supplies', action: 'openSection', argument: 'supplies', testId: 'travel-supplies' }),
+        createButton({ label: copy('map.button'), action: 'openMap', testId: 'travel-map' }),
+      ]),
+      createElement('p', { className: 'road-controls__effect', dataset: { testid: 'travel-effect' }, text: isPhone ? effect : `${effect} Keys: Space pause \u00b7 R rest \u00b7 C caravan \u00b7 S supplies \u00b7 L log \u00b7 M map` }),
+    ]);
+  }
+
+  /** Animals card: how many, how many are lame or weak, and load against capacity (overload is a real rule). */
+  function createAnimalsCard(state) {
+    const capacity = State.getCapacity(state);
+    const load = State.getLoad(state);
+    const weak = state.animals.filter((animal) => animal.hp < getWeakHp()).length;
+    const isOver = load > capacity;
+    const noun = state.animals.length === 1 ? 'animal' : 'animals';
+    return createElement('button', { type: 'button', className: `road-card road-card--animals ${weak > 0 || isOver ? 'road-card--warning' : ''}`.trim(), dataset: { action: 'openSection', argument: 'roadCaravan', testid: 'card-animals', focusKey: 'card-animals' }, 'aria-label': `Animals: ${state.animals.length}, ${weak} weak, load ${load} of ${capacity}${isOver ? ', overloaded' : ''}. Open the caravan.` }, [
+      createElement('strong', { className: 'road-card__name', text: 'Animals' }),
+      createElement('span', { className: 'road-card__line', text: `${state.animals.length} ${noun}${weak > 0 ? ` · ${weak} weak !` : ''}` }),
+      createElement('span', { className: 'road-card__line', text: `Load ${load} of ${capacity}${isOver ? ' !!' : ''}` }),
+    ]);
+  }
+
+  /**
+   * Optional face for a party card (4.4.0 provision). Hidden until img/portraits/por_<id>_<mood>.webp loads, so a game
+   * with no pictures looks and measures exactly as before. Only ids that have a description are tried (no stray 404s).
+   * @returns {HTMLElement|null}
+   */
+  function createPortraitSlot(member, mood) {
+    if (!member.candidateId) return null;
+    const imageId = `por_${member.candidateId}_${mood}`;
+    if (!getImageAlt(imageId) || typeof Image !== 'function') return null;
+    const picture = new Image();
+    picture.className = 'road-card__portrait';
+    picture.alt = getImageAlt(imageId);
+    picture.width = 512;
+    picture.height = 512;
+    picture.hidden = true;
+    picture.decoding = 'async';
+    picture.onload = () => { picture.hidden = false; if (picture.parentElement) picture.parentElement.classList.add('road-card--has-portrait'); };
+    picture.onerror = () => { picture.remove(); };
+    picture.src = getImageUrl(imageId);
+    return picture;
+  }
+
+  /** One party card: name, role, exact health, a word for the state, and Treat on the sick. Dead members stay, greyed. */
+  function createPartyCard(state, member, index) {
+    const isWeak = member.isAlive && member.hp < getWeakHp();
+    const isSick = member.isAlive && Boolean(member.illness);
+    const word = !member.isAlive ? 'Died' : (isSick ? Config.ILLNESSES[member.illness].label : (isWeak ? 'Weak' : 'Well'));
+    const mark = !member.isAlive ? '' : ((isSick || isWeak) ? (member.hp < 50 ? ' !!' : ' !') : ' ✓');
+    const roleText = member.role ? Config.ROLES[member.role].label : 'Leader';
+    const needsCare = isSick || isWeak;
+    const portrait = createPortraitSlot(member, !member.isAlive ? 'grieving' : (needsCare ? 'worried' : 'content'));
+    return createElement('div', { className: `road-card road-card--member ${needsCare ? 'road-card--warning' : ''} ${member.isAlive ? '' : 'road-card--dead'}`.trim(), dataset: { testid: `card-member-${index}` } }, [
+      portrait,
+      createElement('strong', { className: 'road-card__name', text: member.name }),
+      createElement('span', { className: 'road-card__role', text: roleText }),
+      member.isAlive ? createElement('span', { className: 'road-card__line', text: `Health ${Math.round(member.hp)}${mark} · ${word}` }) : createElement('span', { className: 'road-card__line', text: `Died · ${member.cause}` }),
+      member.isAlive ? createMeter(`${member.name} health`, member.hp, 100, isWeak || isSick ? 'meter__fill--danger' : '') : null,
+      isSick ? createButton({ label: 'Treat', action: 'treatMember', argument: member.id, testId: `card-treat-${index}`, variant: 'primary', isDisabled: state.supplies.medicine < 1, className: 'road-card__treat', ariaLabel: `Treat ${member.name}, ${state.supplies.medicine} medicine left` }) : null,
+    ]);
+  }
+
+  /** Band 5: the animals card, then the whole party. On a phone the last cell opens the full caravan and supplies list. */
+  function createRoadCards(state, isPhone) {
+    return createElement('div', { className: 'road-cards', dataset: { testid: 'road-cards' } }, [
+      createAnimalsCard(state),
+      ...state.party.map((member, index) => createPartyCard(state, member, index)),
+      isPhone ? createButton({ label: 'Caravan and supplies', action: 'openSection', argument: 'supplies', testId: 'travel-supplies', className: 'road-card road-card--more' }) : null,
+    ]);
+  }
+
+  /** Exact supplies for a paused phone: the cards already show exact health, so this shows what the caravan carries. */
+  function createPausedSupplies(state) {
     return createElement('section', { className: 'paused', dataset: { testid: 'paused-panel' }, role: 'status' }, [
       createElement('h2', { className: 'paused__title', text: 'Paused: the caravan is standing still' }),
-      createElement('h3', { className: 'card-title', text: 'Party, exact health' }),
-      createPartyCompact(state, true),
       createElement('h3', { className: 'card-title', text: 'Supplies, exact' }),
       createCaravanSnapshot(state),
     ]);
   }
 
-  /** One line saying what the chosen pace and rations do, so the two radio rows can stay short. */
-  function createTravelEffect(state) {
-    return createElement('p', { className: 'travel-effect', dataset: { testid: 'travel-effect' }, text: `${Config.PACES[state.pace].help} ${Config.RATIONS[state.rationLevel].help}` });
-  }
-
+  /** The road screen for every width. Wide screens lay the bands out in a column with the controls in a row; phones stack them. */
   function showRoad(state, view) {
     const edge = State.getEdge(state);
-    const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
     const isPhone = isPhoneLayout();
-    const isPausedPhone = isPhone && state.isPaused;
-    const canvas = getRoadCanvas();
-    const forecastText = Engine.getForecast(state);
-    const paceRows = createElement('div', { className: 'travel-pace', dataset: { testid: 'travel-pace' } }, [
-      createStepper('Pace', Config.PACES, state.pace, 'setPace', 'pace'),
-      createStepper('Rations', Config.RATIONS, state.rationLevel, 'setRations', 'ration'),
-      createTravelEffect(state),
-    ]);
-    // Wide screens keep the caravan always in view on the left page; phones open it as a sheet.
-    const ledger = isPhone ? null : createElement('div', { className: 'travel-ledger' }, [
-      paceRows,
-      createElement('section', { className: 'panel', dataset: { testid: 'ledger-party' } }, [createElement('h2', { className: 'panel__title', text: 'Party, exact health' }), createPartyCompact(state, true)]),
-      createElement('section', { className: 'panel', dataset: { testid: 'ledger-supplies' } }, [createElement('h2', { className: 'panel__title', text: 'Supplies, exact' }), createCaravanSnapshot(state)]),
-    ]);
+    const marginNoteId = view && view.marginNoteId ? view.marginNoteId : null;
+    const kosDone = Math.min(edge.kos, Math.floor(state.kosOnEdge));
+    // A paused phone shows the exact supplies where the picture was; the cards below already carry exact health.
+    const showPausedPanel = isPhone && state.isPaused;
     replaceScreen([
-      createHud(state),
-      createElement('main', { className: 'travel-main' }, [
-        createRouteStrip(state),
+      createStatusBar(state, isPhone),
+      createElement('main', { className: 'road-wide' }, [
         marginNoteId ? createMarginNote(marginNoteId) : null,
-        createElement('div', { className: 'travel-scene' }, [
-          createMarginCard(state),
-          isPausedPhone ? null : canvas,
-          createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} → ${World.findNode(edge.to).name} · ${Math.min(edge.kos, Math.floor(state.kosOnEdge))} of ${edge.kos} kos` }),
-          createElement('p', { className: 'forecast travel-weather', dataset: { testid: 'weather-line' }, text: `${weatherText(state.weather.today)} · Tomorrow: ${forecastText[0] ? Config.WEATHER[forecastText[0].shown].label : '?'}` }),
-          createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
-          state.isPaused && !isPhone ? createElement('p', { className: 'banner banner--info', role: 'status', text: 'Paused. Press Resume to continue.' }) : null,
-          isPausedPhone ? createPausedPanel(state) : createTodayBlock(state),
-          isPhone ? paceRows : null,
-          state.vignette && !isPausedPhone ? createElement('p', { className: 'vignette', dataset: { testid: 'vignette' }, text: state.vignette }) : null,
+        createElement('div', { className: 'road-wide__scene' }, [
+          showPausedPanel ? createPausedSupplies(state) : getRoadCanvas(),
+          createElement('div', { className: 'road-wide__progress' }, [
+            createElement('progress', { className: 'travel-progress', max: String(edge.kos), value: String(Math.min(edge.kos, state.kosOnEdge)), dataset: { testid: 'travel-progress' }, 'aria-label': 'Progress along this road' }),
+            createElement('p', { className: 'route-label', dataset: { testid: 'route-label' }, text: `${World.findNode(edge.from).name} \u2192 ${World.findNode(edge.to).name} \u00b7 ${kosDone} of ${edge.kos} kos` }),
+          ]),
+          state.isPaused && !showPausedPanel ? createElement('p', { className: 'road-wide__paused', role: 'status', text: 'Paused. Press Resume to continue.' }) : null,
         ]),
-        ledger,
+        createNewsLine(state),
+        createRoadControls(state, isPhone),
+        createRoadCards(state, isPhone),
       ]),
-      createRoadBar(state),
     ], 'road');
   }
 
@@ -1829,7 +1919,6 @@
   /** The state the hunt screen reads for its two-number ribbon (the screen itself never changes state). */
   const setProvisionContext = (state) => { context.provisionState = state; };
   const toggleHudExpanded = () => { isHudExpanded = !isHudExpanded; };
-  const setStopTab = (tabId) => { activeStopTab = ['town', 'caravan', 'learn'].includes(tabId) ? tabId : 'town'; };
 
   // ---------------------------------------------------------------------------
   // Journey map sheet (shown on entering a region and at the end of a run)
@@ -1864,7 +1953,7 @@
     initialize, showTitle, showStart, readStartName, showSceneImage, getImageUrl, getImageAlt, openLetter, openChapterEnd, closeChapterEnd, isChapterEndOpen, openLoadBlocked, showStop, showRoad, showProvisionScreen, showEnd, readEpitaph,
     showPending, closePending, hasOpenModal, openSheet, closeTopSheet, closeAllModals, confirmAction,
     openSectionSheet, refreshSectionSheet, isSectionSheetOpen, setProvisionContext,
-    openCodex, openLog, openReport, refreshReport, isReportOpen, setReportNotice, showRatingThanks, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, setStopTab,
+    openCodex, openLog, openReport, refreshReport, isReportOpen, setReportNotice, showRatingThanks, showJourneyMap, setRestDays, openSettings, applySettings, flashSaved, showNotice, toggleHudExpanded, openMenu,
     getRoadCanvas, renderRoadFrame, paintRoadScene, paintStopScene, withContext, fillRectangle, drawBlock, drawDisc, drawEllipse, PALETTE, createElement,
   });
 })(window.Karvanyan);

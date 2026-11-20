@@ -94,10 +94,10 @@ test('4.1.0: a save written by build 4.0.0 still loads (the build label is infor
   assert.equal(parsed.state.leaderName, 'Hadi');
 });
 
-test('4.1.0: the version label is 4.1.2 and the cache-busting numbers in index.html match it', () => {
+test('4.1.0: the version label is 4.4.0 and the cache-busting numbers in index.html match it', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const versions = [...html.matchAll(/\?v=([0-9.]+)/g)].map((match) => match[1]);
-  assert.equal(Config.GAME_VERSION, '4.1.2');
+  assert.equal(Config.GAME_VERSION, '4.4.0');
   assert.ok(versions.length >= 15, `expected every script and stylesheet to carry a version, found ${versions.length}`);
   assert.ok(versions.every((version) => version === Config.GAME_VERSION), `mixed versions: ${[...new Set(versions)].join(', ')}`);
 });

@@ -10,7 +10,7 @@
 (function (namespace) {
   'use strict';
 
-  const GAME_VERSION = '4.1.2';
+  const GAME_VERSION = '4.4.0';
   const SAVE_SCHEMA_VERSION = 3;
   const MIN_LOADABLE_SCHEMA_VERSION = 2;
 

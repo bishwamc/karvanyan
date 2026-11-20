@@ -834,3 +834,147 @@ html, body { overscroll-behavior-y: contain; }
   /* Wide screens: a wider, shorter picture so the whole scene, the weather and the ticker fit above the control bar. */
   .travel-scene .scene-canvas { aspect-ratio: 5 / 2; width: 100%; height: auto; }
 }
+
+/* ---------- v4.2.0: wide road screen, five bands ---------- */
+.road-status { background: var(--color-primary); color: var(--color-on-primary); padding: var(--space-2) var(--space-4); border-bottom: 3px solid var(--color-gold); }
+.road-status__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.status-chip { padding: var(--space-1) var(--space-3); border: 1px solid var(--color-on-primary); font-size: var(--text-small); white-space: nowrap; }
+.status-chip:nth-child(3) { margin-right: auto; }
+.status-chip--tight, .status-chip--short { border-width: 3px; font-weight: 700; }
+.road-wide { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-4) var(--space-4); max-width: 1500px; margin: 0 auto; }
+.road-wide__scene { position: relative; border: 2px solid var(--color-border); background: var(--color-surface-raised); }
+/* The picture is drawn 16:9. A wide strip crops the sky and the ground instead of stretching the camels. */
+.road-wide__scene .scene-canvas { display: block; width: 100%; height: clamp(220px, calc(100vh - 380px), 520px); height: clamp(220px, calc(100dvh - 380px), 520px); object-fit: cover; object-position: 50% 95%; }
+.road-wide__progress { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3); background: var(--color-surface); border-top: 1px solid var(--color-border); }
+.road-wide__progress .travel-progress { flex: 1; }
+.road-wide__progress .route-label { margin: 0; white-space: nowrap; font-size: var(--text-small); }
+.road-wide__paused { position: absolute; top: var(--space-2); left: 50%; transform: translateX(-50%); margin: 0; padding: var(--space-1) var(--space-4); background: var(--color-surface); border: 2px solid var(--color-gold); font-weight: 700; }
+.news-line { display: flex; align-items: center; gap: var(--space-3); background: var(--color-surface-raised); border: 1px solid var(--color-border); padding: 0 var(--space-3); min-height: 2.5rem; }
+.news-line__text { flex: 1; margin: 0; text-align: center; animation: news-in 0.6s ease-out; }
+.news-line__log { flex: none; }
+@keyframes news-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .news-line__text { animation: none; } }
+.road-controls { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3) var(--space-5); align-items: center; padding: var(--space-2) var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); }
+.road-controls .stepper { margin: 0; }
+.road-controls__pill { display: flex; align-items: center; justify-content: center; gap: var(--space-3); }
+.road-controls__pill .stepper__legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.road-controls__more { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+.road-controls__effect { grid-column: 1 / -1; margin: 0; font-size: var(--text-small); color: var(--color-text-muted); }
+.road-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: var(--space-2); }
+.road-card { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); background: var(--color-surface); border: 2px solid var(--color-border); text-align: left; font: inherit; color: inherit; min-width: 0; }
+.road-card--animals { cursor: pointer; background: var(--color-surface-raised); }
+.road-card--warning { border-color: var(--color-danger); border-width: 3px; }
+.road-card--dead { opacity: 0.6; }
+.road-card__name { font-family: var(--font-display); font-size: var(--text-base); }
+.road-card__role { font-size: var(--text-small); color: var(--color-text-muted); }
+.road-card__line { font-size: var(--text-small); font-weight: 700; }
+.road-card__treat { align-self: flex-start; min-height: 2.25rem; }
+/* v4.2.0 fit: one screen at 1366 x 768 */
+.road-wide__scene .scene-canvas { height: clamp(200px, calc(100vh - 480px), 520px); height: clamp(200px, calc(100dvh - 480px), 520px); }
+.road-controls { padding: var(--space-1) var(--space-3); gap: var(--space-1) var(--space-4); }
+.road-controls .button, .road-controls .segment__label { min-height: 2.5rem; white-space: nowrap; padding-top: 0; padding-bottom: 0; }
+.road-controls .segments { flex-wrap: nowrap; gap: var(--space-1); }
+.road-controls .segment { flex: 0 0 auto; }
+.road-controls__effect { font-size: 0.8125rem; }
+.road-card { padding: var(--space-1) var(--space-3); gap: 0; }
+.road-card .meter { margin: 2px 0; height: 1rem; }
+.road-card .meter__text { font-size: 0.7rem; }
+.news-line { min-height: 2.25rem; }
+.road-wide { padding-bottom: var(--space-2); }
+
+/* ---------- v4.3.0: the same road screen on phones, stacked ---------- */
+@media (max-width: 899px) {
+  .road-status { padding: var(--space-1) var(--space-2); }
+  .road-status__list { gap: var(--space-1); }
+  .status-chip { flex: 1 1 22%; padding: 2px var(--space-2); font-size: 0.8125rem; text-align: center; white-space: normal; }
+  .status-chip:nth-child(1), .status-chip:nth-child(2) { flex-basis: 45%; font-size: var(--text-small); }
+  .status-chip:nth-child(3) { margin-right: 0; }
+  .road-wide { padding: var(--space-1) var(--space-2) var(--space-2); gap: var(--space-1); }
+  .road-wide__scene .scene-canvas { height: clamp(150px, 27vh, 260px); height: clamp(150px, 27dvh, 260px); object-position: 50% 95%; }
+  .road-wide__scene .paused { padding: var(--space-2); max-height: clamp(150px, 27dvh, 260px); overflow: auto; }
+  .road-wide__progress { padding: 2px var(--space-2); }
+  .road-wide__progress .route-label { font-size: 0.8125rem; }
+  .news-line { padding: 0 var(--space-2); min-height: 2.25rem; }
+  .news-line__text { font-size: var(--text-small); text-align: left; }
+  .road-controls { grid-template-columns: 1fr; gap: var(--space-1); padding: var(--space-1) var(--space-2); }
+  .road-controls__pill { justify-content: stretch; }
+  .road-controls__pill .stepper { flex: 1; }
+  .road-controls__pill .segments, .road-controls__rations .segments { width: 100%; }
+  .road-controls .segments { flex-wrap: nowrap; }
+  .road-controls .segment { flex: 1 1 0; }
+  .road-controls .segment__label { width: 100%; justify-content: center; padding-left: var(--space-1); padding-right: var(--space-1); font-size: 0.875rem; }
+  .road-controls__more { justify-content: stretch; }
+  .road-controls__more .button { flex: 1; }
+  .road-controls__effect { font-size: 0.75rem; }
+  .road-cards { grid-template-columns: 1fr 1fr; gap: var(--space-1); }
+  .road-card { padding: var(--space-1) var(--space-2); }
+  .road-card--more { justify-content: center; align-items: center; text-align: center; font-weight: 700; min-height: 3rem; }
+  .road-card__treat { min-height: 2rem; }
+}
+/* v4.3.0 fit pass: one screen at 390 x 844 */
+@media (max-width: 899px) {
+  .status-chip { white-space: nowrap; font-size: 0.75rem; padding: 2px var(--space-1); }
+  .status-chip:nth-child(1), .status-chip:nth-child(2) { font-size: 0.8125rem; }
+  .road-wide__scene .scene-canvas { height: clamp(130px, 22vh, 220px); height: clamp(130px, 22dvh, 220px); }
+  .news-line__text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .road-controls__rations .stepper__legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .road-controls .button, .road-controls .segment__label { min-height: 2.5rem; }
+  .road-card__role { display: none; }
+  .road-card .road-card__name { font-size: var(--text-small); }
+  .road-card .meter { height: 0.9rem; }
+  .road-controls__effect { line-height: 1.25; }
+}
+@media (max-width: 899px) {
+  .road-wide, .road-wide > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .road-wide__progress { flex-wrap: wrap; gap: 0 var(--space-2); }
+  .road-wide__progress .travel-progress { flex: 1 1 4rem; min-width: 0; }
+  .road-wide__progress .route-label { white-space: normal; text-align: right; flex: 1 1 auto; }
+  .road-wide__scene .scene-canvas { max-width: 100%; }
+}
+/* Short phones: drop the effect sentence (it is still in the Supplies sheet) and shrink the picture a little. */
+@media (max-width: 899px) and (max-height: 780px) {
+  .road-controls__effect { display: none; }
+  .road-wide__scene .scene-canvas { height: clamp(110px, 20vh, 220px); height: clamp(110px, 20dvh, 220px); }
+}
+/* Paused: the exact supplies are the point, so the panel is never clipped; the page may scroll. */
+@media (max-width: 899px) { .road-wide__scene .paused { max-height: none; overflow: visible; } }
+
+/* ---------- v4.4.0: the stop screen, same bands as the road ---------- */
+.status-menu { flex: 0 0 auto; }
+.status-menu .button { min-height: 2rem; padding: 2px var(--space-3); color: var(--color-on-primary); border: 1px solid var(--color-on-primary); background: transparent; font-size: var(--text-small); }
+.stop-wide { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-4) var(--space-4); max-width: 1100px; margin: 0 auto; }
+.stop-wide, .stop-wide > * { min-width: 0; box-sizing: border-box; max-width: 100%; }
+.stop-wide__scene { position: relative; border: 2px solid var(--color-border); background: var(--color-surface-raised); }
+.stop-wide__scene .scene-image, .stop-wide__scene .scene-canvas { display: block; width: 100%; }
+.stop-wide__scene .scene-canvas { height: clamp(150px, calc(100vh - 560px), 360px); height: clamp(150px, calc(100dvh - 560px), 360px); object-fit: cover; object-position: 50% 80%; }
+.stop-wide__name { position: absolute; left: var(--space-3); top: var(--space-2); padding: var(--space-1) var(--space-3); background: var(--color-surface); border: 2px solid var(--color-gold); max-width: calc(100% - 2 * var(--space-3)); }
+.stop-wide__title { margin: 0; font-family: var(--font-display); font-size: var(--text-large); text-transform: uppercase; letter-spacing: 0.06em; }
+.stop-wide__chapter { margin: 0; font-size: 0.8125rem; color: var(--color-text-muted); }
+.stop-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.stop-tile { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 3.5rem; padding: var(--space-2) var(--space-3); background: var(--color-surface); border: 2px solid var(--color-border); text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.stop-tile__title { font-family: var(--font-display); font-size: var(--text-base); font-weight: 700; }
+.stop-tile__sub { font-size: 0.8125rem; color: var(--color-text-muted); }
+.stop-tile--attention { border-color: var(--color-danger); border-width: 3px; }
+.stop-tile--primary { grid-column: 1 / -1; background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-gold); align-items: center; text-align: center; min-height: 3.5rem; }
+.stop-tile--primary .stop-tile__sub { color: var(--color-on-primary); }
+@media (max-width: 899px) {
+  .stop-wide { padding: var(--space-1) var(--space-2) var(--space-2); gap: var(--space-1); }
+  .stop-wide__scene .scene-canvas { height: clamp(110px, 20vh, 200px); height: clamp(110px, 20dvh, 200px); }
+  .stop-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); }
+  .stop-tile { min-height: 3rem; padding: var(--space-1) var(--space-2); }
+  .status-menu { flex: 0 0 auto; }
+}
+@media (min-width: 900px) {
+  /* Wide: the picture and the road-ahead card sit side by side so the tiles stay on screen. */
+  .stop-wide { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-2) var(--space-3); align-items: stretch; }
+  .stop-wide > * { grid-column: 1 / -1; }
+  .stop-wide > .stop-wide__scene { grid-column: 1; }
+  .stop-wide > .leg-brief { grid-column: 2; margin: 0; }
+  .stop-wide__scene .scene-canvas { height: 100%; min-height: 220px; max-height: 340px; object-position: 50% 50%; }
+  .stop-wide__scene .scene-image { height: 100%; }
+}
+@media (max-width: 899px) { .stop-wide__scene .scene-canvas { height: clamp(100px, 18vh, 200px); height: clamp(100px, 18dvh, 200px); } }
+
+/* 4.4.0 provision: optional portrait on a party card. Absent file = nothing drawn, nothing measured. */
+.road-card__portrait { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; float: right; margin: 0 0 2px 6px; }
+.road-card--dead .road-card__portrait { filter: grayscale(1); }

@@ -786,7 +786,8 @@
 
     // HUD and tabs
     toggleHud() { UI().toggleHudExpanded(); renderCurrent(); },
-    selectTab(argument) { UI().setStopTab(argument); UI().showStop(gameState); },
+    openMenu() { UI().openMenu(); },
+    saveAndQuit() { UI().closeAllModals(); saveNow(); ACTIONS.goToTitle(); },
 
     // town
     buySupply(argument) { applyTrade(Engine.buySupply(gameState, argument)); },
